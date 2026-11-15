@@ -112,3 +112,28 @@ test("Utilisateurs : l'accès Import OMS se règle membre par membre", async ({ 
   await page.getByRole("switch", { name: "Accès Import OMS pour Léa Morel" }).click();
   await expect(page.getByRole("switch", { name: "Accès Import OMS pour Léa Morel" })).toHaveAttribute("aria-checked", "false");
 });
+
+test("revue mensuelle : 4 pôles et 13 mois", async ({ page }) => {
+  await page.goto("/sdg-distribution/revue-mensuelle");
+  await expect(page.getByRole("heading", { name: "Revue mensuelle" })).toBeVisible();
+  for (const pole of ["Acquisition", "Retours", "Logistique", "Frais internes"]) {
+    await expect(page.getByRole("heading", { name: pole, exact: true })).toBeVisible();
+  }
+  await expect(page.getByText("TACoS").first()).toBeVisible();
+  const rows = page.locator("table").first().locator("tbody tr");
+  await expect(rows).toHaveCount(13);
+});
+
+test("forecast : atterrissage fin de mois et objectif modifiable", async ({ page }, info) => {
+  await page.goto("/sdg-distribution/dashboard");
+  await expect(page.getByRole("heading", { name: /^Atterrissage fin / })).toBeVisible();
+  await expect(page.getByText(/fourchette/)).toBeVisible();
+  test.skip(info.project.name !== "desktop", "saisie testée sur desktop");
+  await page.goto("/sdg-distribution/parametres/espace");
+  await page.getByLabel("Objectif de CA HT du mois").fill("500 000");
+  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await expect(page.getByText("Objectifs enregistrés.")).toBeVisible();
+  await page.goto("/sdg-distribution/dashboard");
+  await expect(page.getByText(/Objectif\s+500\s000\s€/)).toBeVisible();
+  await expect(page.getByText("Sous l'objectif")).toBeVisible();
+});

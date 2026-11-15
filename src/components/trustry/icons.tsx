@@ -99,6 +99,12 @@ const PATHS = {
       <circle cx="19" cy="12" r="1.5" />
     </>
   ),
+  calendar: (
+    <>
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path d="M16 3v4M8 3v4M3 10h18" />
+    </>
+  ),
   chevronDown: <path d="m6 9 6 6 6-6" />,
   chevronRight: <path d="m9 6 6 6-6 6" />,
   arrowRight: (

@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { ChannelTable } from "@/components/dashboard/channel-table";
 import { DailyChart } from "@/components/dashboard/daily-chart";
 import { DashboardControls } from "@/components/dashboard/dashboard-header";
+import { ForecastCard } from "@/components/dashboard/forecast-card";
 import { KpiCards } from "@/components/dashboard/kpi-cards";
 import { PillarHealth } from "@/components/dashboard/pillar-health";
 import { PriorityAlerts } from "@/components/dashboard/priority-alerts";
@@ -11,9 +12,10 @@ import { SkuTable } from "@/components/dashboard/sku-tables";
 import { Button } from "@/components/trustry/button";
 import { PageHeader } from "@/components/trustry/page-header";
 import { EmptyState } from "@/components/trustry/states";
+import { canManageMembers } from "@/domain/access";
 import { buildPeriod, monthName, parsePeriod, type PeriodKey } from "@/domain/period";
 import { dashboardEyebrow } from "@/lib/dates";
-import { getDashboard, getSyncSummary, getToday, getWorkspace, requireUser } from "@/server/data";
+import { getDashboard, getForecast, getSyncSummary, getToday, getWorkspace, requireUser } from "@/server/data";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
@@ -29,10 +31,11 @@ export default async function DashboardPage({ params, searchParams }: PageProps<
   const [user, workspace] = await Promise.all([requireUser(), getWorkspace(espace)]);
   if (!workspace) notFound();
 
-  const [view, sync, today] = await Promise.all([
+  const [view, sync, today, forecast] = await Promise.all([
     getDashboard(workspace.id, periodKey),
     getSyncSummary(workspace.id),
     getToday(),
+    getForecast(workspace.id),
   ]);
   const period = buildPeriod(periodKey, today);
   const legends: Record<PeriodKey, [string, string]> = {
@@ -62,6 +65,10 @@ export default async function DashboardPage({ params, searchParams }: PageProps<
       ) : (
         <>
           <KpiCards view={view} monthLabel={PROFIT_LABEL[periodKey]} />
+          <ForecastCard
+            forecast={forecast}
+            settingsHref={canManageMembers(workspace.role) ? `/${espace}/parametres/espace#objectifs` : null}
+          />
           <div className="flex flex-wrap gap-3.5">
             <DailyChart view={view} legendCurrent={legends[periodKey][0]} legendPrevious={legends[periodKey][1]} />
             <ChannelTable view={view} pnlHref={`/${espace}/pnl?periode=${periodKey}`} />

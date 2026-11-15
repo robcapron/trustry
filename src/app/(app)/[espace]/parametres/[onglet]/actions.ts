@@ -6,7 +6,7 @@ import { z } from "zod";
 import { canManageMembers } from "@/domain/access";
 import { isDemoMode } from "@/lib/env";
 import { formatNumber } from "@/lib/format";
-import { getCurrentUser, getWorkspace, listMembers, members } from "@/server/data";
+import { getCurrentUser, getToday, getWorkspace, listMembers, members, saveMonthlyPlan } from "@/server/data";
 import { seedWorkspaceFromDemo } from "@/server/demo/seed-supabase";
 import { createSupabaseServerClient } from "@/server/supabase/server";
 
@@ -100,4 +100,46 @@ export async function inviteMember(_prev: MemberActionState, formData: FormData)
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Invitation impossible." };
   }
+}
+
+// Objectifs et cibles -----------------------------------------------------------
+
+export type PlanState = { ok?: string; error?: string };
+
+/** "385 000" ou "1 200,50" (euros HT) -> centimes. Vide -> null. */
+function parseEuros(value: FormDataEntryValue | null): number | null | "invalid" {
+  const raw = String(value ?? "").replace(/[\s\u00a0\u202f€]/g, "").replace(",", ".");
+  if (raw === "") return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : "invalid";
+}
+
+function parsePercent(value: FormDataEntryValue | null): number | "invalid" {
+  const raw = String(value ?? "").replace(/[\s%]/g, "").replace(",", ".");
+  const n = Number(raw);
+  return raw !== "" && Number.isFinite(n) && n >= 0 && n <= 100 ? Math.round(n * 100) / 100 : "invalid";
+}
+
+export async function saveTargets(_prev: PlanState, formData: FormData): Promise<PlanState> {
+  const slug = String(formData.get("espace") ?? "");
+  const workspace = await getWorkspace(slug);
+  if (!workspace || !canManageMembers(workspace.role)) return { error: "Réservé au propriétaire ou à un admin de l'espace." };
+  const revenueTarget = parseEuros(formData.get("objectif"));
+  const opex = parseEuros(formData.get("opex"));
+  const pct = {
+    tacos: parsePercent(formData.get("tacos")),
+    returnRate: parsePercent(formData.get("retours")),
+    logisticsRate: parsePercent(formData.get("logistique")),
+    opexRate: parsePercent(formData.get("frais")),
+  };
+  if (revenueTarget === "invalid" || opex === "invalid") return { error: "Montant invalide : saisissez un nombre en euros HT." };
+  if (Object.values(pct).some((v) => v === "invalid")) return { error: "Cible invalide : saisissez un pourcentage entre 0 et 100." };
+  const month = (await getToday()).slice(0, 7);
+  try {
+    await saveMonthlyPlan(workspace.id, month, { revenueTarget, opex: opex ?? 0 }, pct as Record<keyof typeof pct, number>);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Enregistrement impossible." };
+  }
+  revalidatePath(`/${slug}`, "layout");
+  return { ok: "Objectifs enregistrés." };
 }

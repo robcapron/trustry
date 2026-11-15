@@ -17,6 +17,8 @@ Porteur : Robin Capron (SDG Distribution). Interface 100 % en français.
 - Référence bloquée = priorité absolue : une alerte de blocage passe toujours avant un réassort (`compareAlerts`).
 - Chute de ventes : l'alerte doit identifier les SKU concernés ou indiquer que la baisse est liée au compte (`scope = 'account'`).
 - Coût de retour = remboursement HT + frais de retour - valeur restockée.
+- Revue mensuelle (`src/domain/monthly-review.ts`, reprise du Sheet "Mensu | Analyse") : 4 pôles à améliorer chaque mois, tous en taux "plus bas = mieux" : Acquisition (TACoS), Retours (unités retournées / unités vendues), Logistique (logistique / CA), Frais internes (OpEx / CA). Cibles dans `alert_rules`, OpEx et objectif de CA par mois dans `monthly_costs`. Marge nette de la revue = après OpEx.
+- Prévision d'atterrissage (`src/domain/forecast.ts`) : réalisé des jours clos + jours restants au rythme des 14 derniers jours clos, corrigé du profil N-1 aligné à 364 jours (garde jours de semaine et Black Friday). Fourchette = moitié de l'écart entre les 2 méthodes, bornée 5 % - 12 %. Profit projeté à marge constante.
 
 ## Multi-tenant et accès
 
@@ -84,6 +86,6 @@ pnpm typecheck && pnpm lint && pnpm build
 | 0 | Repo, design system, layout et navigation (desktop + iPhone), auth, multi-tenant + RLS, données d'exemple, Import OMS intégré | Fait |
 | 1 | Dashboard global + sélecteur d'espace (données mock) | Fait |
 | 2 | P&L détaillé (canal > pays > SKU, filtres, export CSV) + Centre d'alertes + gestion des membres, accès et invitations | Fait |
-| 3 | Connecteurs : écran, MockAdapter, Amazon SP-API, sources Odoo (coûts d'achat), Google Drive (coûts transport), BCE, moteur d'alertes (Inngest) + notifications push | A faire |
+| 3 | Revue mensuelle par pôle + prévision d'atterrissage (fait). Connecteurs : écran, MockAdapter, synchro via Claude (MCP) et API, Odoo (coûts d'achat), Google Drive (coûts transport), BCE, moteur d'alertes (Inngest) + notifications push | En cours |
 | 4 | Serveur MCP (lecture, actions avec validation, 3 niveaux de permission) | A faire |
 | 5 | Les 7 modules piliers | A faire |

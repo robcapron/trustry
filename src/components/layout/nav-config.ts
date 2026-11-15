@@ -18,6 +18,7 @@ export const NAV_TOP: NavItem[] = [
   { key: "dashboard", label: "Dashboard", icon: "dashboard", path: "/dashboard" },
   { key: "alertes", label: "Alertes", icon: "alertes", path: "/alertes", badge: "alerts" },
   { key: "pnl", label: "P&L détaillé", icon: "pnl", path: "/pnl" },
+  { key: "revue", label: "Revue mensuelle", icon: "calendar", path: "/revue-mensuelle" },
   { key: "import-oms", label: "Import OMS", icon: "importOms", path: "/import-oms", module: "import-oms" },
 ];
 

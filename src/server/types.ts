@@ -106,6 +106,7 @@ export type DailyMetric = {
   logistics: number;
   returns: number;
   cogs: number;
+  returnUnits: number;
 };
 
 export type Alert = {

@@ -245,9 +245,13 @@ export type DemoDataset = {
   metrics: DailyMetric[];
   alerts: Alert[];
   pillarScores: PillarScore[];
+  /** Frais internes mensuels (centimes), clé `${workspaceId}:${YYYY-MM}` */
+  opex: Record<string, number>;
+  /** Objectifs de CA HT mensuels (centimes), clé `${workspaceId}:${YYYY-MM}` */
+  revenueTargets: Record<string, number>;
 };
 
-export const HISTORY_DAYS = 190;
+export const HISTORY_DAYS = 410;
 
 /** Date du jour à Paris, au format YYYY-MM-DD. */
 export function parisToday(now: Date = new Date()): string {
@@ -277,6 +281,35 @@ function previousMonthSameDay(iso: string): string {
   return `${py}-${String(pm).padStart(2, "0")}-${String(Math.min(d, lastDay)).padStart(2, "0")}`;
 }
 
+/** Saisonnalité mensuelle (janvier à décembre), relative. */
+const SEASONALITY = [0.6, 0.6, 0.85, 0.95, 1, 1, 0.9, 0.75, 1, 1, 1.05, 1.25];
+
+/** Variation déterministe des taux de pub, logistique et retours selon le mois (données d'exemple). */
+function monthDrift(date: string, marketplace: string): { ads: number; logistics: number; returns: number } {
+  const k = Number(date.slice(0, 4)) * 12 + Number(date.slice(5, 7)) + (hashString(marketplace) % 7);
+  const month = Number(date.slice(5, 7));
+  const promo = month === 11 || month === 12 ? 1.35 : 1;
+  return {
+    ads: (1 + 0.22 * Math.sin(k * 1.3)) * promo,
+    logistics: 1 + 0.1 * Math.sin(k * 0.9 + 1),
+    returns: (1 + 0.18 * Math.sin(k * 1.7 + 2)) * (month === 1 ? 1.25 : 1),
+  };
+}
+
+/** Black Friday : 4e vendredi de novembre (YYYY-MM-DD). */
+function blackFriday(year: number): string {
+  const first = new Date(Date.UTC(year, 10, 1, 12)).getUTCDay();
+  return `${year}-11-${String(1 + ((5 - first + 7) % 7) + 21).padStart(2, "0")}`;
+}
+
+/** Pics d'activité : semaine avant le Black Friday, week-end du Black Friday au Cyber Monday. */
+function eventFactor(d: string): number {
+  const bf = blackFriday(Number(d.slice(0, 4)));
+  if (d >= bf && d <= addDays(bf, 3)) return 2.4;
+  if (d >= addDays(bf, -7) && d < bf) return 1.35;
+  return 1;
+}
+
 /** Part de la journée en cours déjà écoulée (le jour J est partiel). */
 const TODAY_FACTOR = 0.72;
 
@@ -295,6 +328,8 @@ export function buildDemoDataset(now: Date = new Date()): DemoDataset {
     metrics: [],
     alerts: [],
     pillarScores: [],
+    opex: {},
+    revenueTargets: {},
   };
 
   for (const seed of WORKSPACE_SEEDS) buildWorkspace(ds, seed, now);
@@ -402,6 +437,22 @@ function buildWorkspace(ds: DemoDataset, seed: WorkspaceSeed, now: Date) {
   applyListingIncidents(ds, seed, wsId);
   buildAlerts(ds, seed, wsId, now);
   buildPillarScores(ds, seed, wsId);
+  // Frais internes : 1 200 € HT par mois pour SDG (comme le suivi), 300 € pour les autres
+  for (let i = 0; i < 8; i++) {
+    const d = new Date(`${ds.today.slice(0, 7)}-01T12:00:00Z`);
+    d.setUTCMonth(d.getUTCMonth() - i);
+    ds.opex[`${wsId}:${d.toISOString().slice(0, 7)}`] = seed.key === "sdg" ? 120_000 : 30_000;
+  }
+  // Objectif de CA du mois : CA du même mois l'an dernier + 45 %, arrondi à 5 000 € HT
+  const byMonth = new Map<string, number>();
+  for (const m of ds.metrics) {
+    if (m.workspaceId !== wsId) continue;
+    byMonth.set(m.date.slice(0, 7), (byMonth.get(m.date.slice(0, 7)) ?? 0) + m.revenueHt);
+  }
+  for (const month of byMonth.keys()) {
+    const ly = byMonth.get(`${Number(month.slice(0, 4)) - 1}${month.slice(4)}`);
+    if (ly) ds.revenueTargets[`${wsId}:${month}`] = Math.round((ly * 1.45) / 500_000) * 500_000;
+  }
 }
 
 function generateChannelMetrics(
@@ -432,6 +483,8 @@ function generateChannelMetrics(
     // Kaufland : décrochage sur les 7 derniers jours (cas "baisse liée au compte")
     if (seed.key === "sdg" && plan.marketplace === "kaufland" && d > addDays(today, -7)) level *= 0.55;
     if (d === today) level *= TODAY_FACTOR;
+    // Événements commerciaux uniquement dans l'historique (le mois en cours est calibré sur la maquette)
+    if (d < `${currentMonth}-01`) level *= eventFactor(d);
     raw.set(d, level);
   }
 
@@ -455,9 +508,10 @@ function generateChannelMetrics(
       const progress = (dayOfMonth(d) - dayOfMonth(prevEnd)) / 16;
       scale = prevScale + (curScale - prevScale) * Math.min(1, Math.max(0, progress)) * 0.5;
     } else {
-      // historique plus ancien : un peu plus bas (saisonnalité de fin d'année)
+      // historique plus ancien : croissance d'environ 1,5 % par mois + saisonnalité (pic Black Friday / Noël)
       const monthsBack = monthDistance(d, prevStart);
-      scale = prevScale * Math.pow(0.95, monthsBack);
+      const season = SEASONALITY[Number(d.slice(5, 7)) - 1] / SEASONALITY[Number(prevStart.slice(5, 7)) - 1];
+      scale = prevScale * Math.pow(0.985, monthsBack) * season;
     }
     dailyCents.set(d, raw.get(d)! * scale);
   }
@@ -486,6 +540,7 @@ function generateChannelMetrics(
         logistics: 0,
         returns: 0,
         cogs: 0,
+        returnUnits: 0,
       });
     }
   }
@@ -504,11 +559,16 @@ function generateChannelMetrics(
   const cogsPercent = Math.max(25, 100 - costs.commission - costs.ads - costs.logistics - costs.returns - plan.margin);
   for (const r of rows) {
     const pct = (p: number) => Math.round((r.revenueHt * p) / 100);
+    // Historique (avant le mois précédent) : dérive mensuelle des pôles pour une revue mensuelle vivante
+    const drift = r.date < prevStart ? monthDrift(r.date, plan.marketplace) : { ads: 1, logistics: 1, returns: 1 };
     r.commissions = pct(costs.commission);
-    r.ads = pct(costs.ads);
-    r.logistics = pct(costs.logistics);
-    r.returns = pct(costs.returns);
+    r.ads = pct(costs.ads * drift.ads);
+    r.logistics = pct(costs.logistics * drift.logistics);
+    r.returns = pct(costs.returns * drift.returns);
     r.cogs = pct(cogsPercent);
+    // Retours en volume : taux propre au canal (environ 2 fois le poids du coût des retours)
+    const rate = (r.returns / Math.max(1, r.revenueHt)) * 2.2;
+    r.returnUnits = Math.floor(r.units * rate) + (rand() < (r.units * rate) % 1 ? 1 : 0);
   }
   ds.metrics.push(...rows);
 }
@@ -586,6 +646,7 @@ function zeroMetric(m: DailyMetric) {
   m.logistics = 0;
   m.returns = 0;
   m.cogs = 0;
+  m.returnUnits = 0;
 }
 
 function alert(

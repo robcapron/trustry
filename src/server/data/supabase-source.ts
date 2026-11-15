@@ -4,6 +4,8 @@ import type { Role } from "@/domain/access";
 import type { DashboardAlert } from "@/domain/dashboard";
 import type { MetricTotals, Rollups } from "@/domain/metrics";
 import type { DateRange } from "@/domain/period";
+import type { DailyRollup } from "@/domain/metrics";
+import { DEFAULT_TARGETS, type MonthlyRow, type PoleTargets } from "@/domain/monthly-review";
 import { parisToday } from "@/lib/dates";
 import { createSupabaseServerClient } from "../supabase/server";
 import type { Connection, ConnectionStatus, Invitation, MarketplaceCode, Member, NavCounts, PillarScore, SessionUser, SyncSummary, WorkspaceSummary } from "../types";
@@ -302,4 +304,80 @@ export async function listInvitations(workspaceId: string): Promise<Invitation[]
     .gt("expires_at", new Date().toISOString())
     .order("created_at", { ascending: false });
   return (data ?? []).map((i) => ({ id: i.id, email: i.email, role: i.role, grantedModules: i.granted_modules ?? [], expiresAt: i.expires_at }));
+}
+
+export async function getMonthlyRows(workspaceId: string, range: DateRange): Promise<MonthlyRow[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("metrics_monthly", { ws: workspaceId, date_from: range.from, date_to: range.to });
+  if (error) throw new Error(`Agrégat mensuel indisponible : ${error.message}`);
+  return ((data ?? []) as (TotalsRow & { month: string; marketplace: string; brand: string; returns_units: number })[]).map((r) => ({
+    ...totals(r),
+    month: r.month,
+    marketplace: r.marketplace,
+    brand: r.brand ?? "",
+    returnUnits: Number(r.returns_units),
+  }));
+}
+
+export async function getOpex(workspaceId: string): Promise<Record<string, number>> {
+  const supabase = await createSupabaseServerClient();
+  const { data } = await supabase.from("monthly_costs").select("month, opex_eur_cents").eq("workspace_id", workspaceId);
+  return Object.fromEntries((data ?? []).map((r) => [String(r.month).slice(0, 7), Number(r.opex_eur_cents)]));
+}
+
+export async function getPoleTargets(workspaceId: string): Promise<PoleTargets> {
+  const supabase = await createSupabaseServerClient();
+  const { data } = await supabase
+    .from("alert_rules")
+    .select("tacos_target_percent, returns_rate_target_percent, logistics_rate_target_percent, opex_rate_target_percent")
+    .eq("workspace_id", workspaceId)
+    .maybeSingle();
+  if (!data) return DEFAULT_TARGETS;
+  return {
+    tacos: Number(data.tacos_target_percent),
+    returnRate: Number(data.returns_rate_target_percent),
+    logisticsRate: Number(data.logistics_rate_target_percent),
+    opexRate: Number(data.opex_rate_target_percent),
+  };
+}
+
+export async function getDaily(workspaceId: string, range: DateRange): Promise<DailyRollup[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("metrics_daily", { ws: workspaceId, date_from: range.from, date_to: range.to });
+  if (error) throw new Error(`Agrégat journalier indisponible : ${error.message}`);
+  return ((data ?? []) as (TotalsRow & { metric_date: string })[]).map((r) => ({ ...totals(r), date: r.metric_date }));
+}
+
+export async function getRevenueTarget(workspaceId: string, month: string): Promise<number | null> {
+  const supabase = await createSupabaseServerClient();
+  const { data } = await supabase
+    .from("monthly_costs")
+    .select("revenue_target_eur_cents")
+    .eq("workspace_id", workspaceId)
+    .eq("month", `${month}-01`)
+    .maybeSingle();
+  return data?.revenue_target_eur_cents == null ? null : Number(data.revenue_target_eur_cents);
+}
+
+export async function setPoleTargets(workspaceId: string, t: PoleTargets): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.from("alert_rules").upsert({
+    workspace_id: workspaceId,
+    tacos_target_percent: t.tacos,
+    returns_rate_target_percent: t.returnRate,
+    logistics_rate_target_percent: t.logisticsRate,
+    opex_rate_target_percent: t.opexRate,
+  });
+  if (error) throw new Error(`Enregistrement impossible : ${error.message}`);
+}
+
+export async function setMonthlyPlan(workspaceId: string, month: string, plan: { revenueTarget: number | null; opex: number }) {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.from("monthly_costs").upsert({
+    workspace_id: workspaceId,
+    month: `${month}-01`,
+    revenue_target_eur_cents: plan.revenueTarget,
+    opex_eur_cents: plan.opex,
+  });
+  if (error) throw new Error(`Enregistrement impossible : ${error.message}`);
 }

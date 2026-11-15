@@ -5,6 +5,8 @@ import type { Role } from "@/domain/access";
 import { buildDashboard, type DashboardView } from "@/domain/dashboard";
 import { buildPeriod, type PeriodKey } from "@/domain/period";
 import { buildPnl, type PnlFilters, type PnlView } from "@/domain/pnl";
+import { buildForecast, forecastRanges, type Forecast } from "@/domain/forecast";
+import { buildMonthlyReview, previousMonth, type MonthlyReview } from "@/domain/monthly-review";
 import { isDemoMode } from "@/lib/env";
 import { MARKETPLACE_NAMES } from "@/domain/marketplaces";
 import type { Connection, Member, NavCounts, SessionUser, SyncSummary, WorkspaceSummary } from "../types";
@@ -96,3 +98,66 @@ export const members = {
   remove: (workspaceId: string, userId: string) => source().removeMember(workspaceId, userId),
   invite: (workspaceId: string, email: string, role: Role, modules: string[]) => source().createInvitation(workspaceId, email, role, modules),
 };
+
+/** Revue mensuelle par pôle : 13 mois se terminant au mois choisi. */
+export const getMonthlyReview = cache(async (workspaceId: string, month: string): Promise<MonthlyReview & { today: string }> => {
+  const src = source();
+  const today = await src.getToday();
+  let from = month;
+  for (let i = 0; i < 13; i++) from = previousMonth(from);
+  const [y, m] = month.split("-").map(Number);
+  const to = `${month}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, "0")}`;
+  const [rows, opex, targets] = await Promise.all([
+    src.getMonthlyRows(workspaceId, { from: `${from}-01`, to }),
+    src.getOpex(workspaceId),
+    src.getPoleTargets(workspaceId),
+  ]);
+  return { ...buildMonthlyReview({ rows, opex, today, selectedMonth: month, targets, names: MARKETPLACE_NAMES }), today };
+});
+
+/** Prévision d'atterrissage fin de mois (indépendante de la période affichée). */
+export const getForecast = cache(async (workspaceId: string): Promise<Forecast> => {
+  const src = source();
+  const today = await src.getToday();
+  const r = forecastRanges(today);
+  const [monthToDate, recent, lastYearDaily, previousMonth, lastYearMonth, target] = await Promise.all([
+    src.getDaily(workspaceId, r.monthToDate),
+    src.getDaily(workspaceId, r.recent),
+    src.getDaily(workspaceId, r.lastYear),
+    src.getDaily(workspaceId, r.previousMonth),
+    src.getDaily(workspaceId, r.lastYearMonth),
+    src.getRevenueTarget(workspaceId, today.slice(0, 7)),
+  ]);
+  const total = (rows: { revenueHt: number }[]) => (rows.length ? rows.reduce((t, d) => t + d.revenueHt, 0) : null);
+  return buildForecast({
+    today,
+    monthToDate,
+    recent,
+    lastYearDaily,
+    previousMonthRevenue: total(previousMonth),
+    lastYearMonthRevenue: total(lastYearMonth),
+    target,
+  });
+});
+
+/** Objectif de CA, frais internes du mois et cibles par pôle (Paramètres > Espace client). */
+export const getMonthlyPlan = cache(async (workspaceId: string, month: string) => {
+  const src = source();
+  const [revenueTarget, opex, targets] = await Promise.all([
+    src.getRevenueTarget(workspaceId, month),
+    src.getOpex(workspaceId),
+    src.getPoleTargets(workspaceId),
+  ]);
+  return { revenueTarget, opex: opex[month] ?? 0, targets };
+});
+
+export async function saveMonthlyPlan(
+  workspaceId: string,
+  month: string,
+  plan: { revenueTarget: number | null; opex: number },
+  targets: import("@/domain/monthly-review").PoleTargets,
+) {
+  const src = source();
+  await src.setMonthlyPlan(workspaceId, month, plan);
+  await src.setPoleTargets(workspaceId, targets);
+}

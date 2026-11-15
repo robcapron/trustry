@@ -9,6 +9,7 @@ export const metadata: Metadata = { title: "Plus" };
 export default async function PlusPage({ params }: PageProps<"/[espace]/plus">) {
   const { espace } = await params;
   const links: { href: string; label: string; icon: IconName; hint?: string }[] = [
+    { href: `/${espace}/revue-mensuelle`, label: "Revue mensuelle", icon: "calendar", hint: "Acquisition, retours, logistique" },
     { href: `/${espace}/parametres/connecteurs`, label: "Connecteurs", icon: "connecteurs", hint: "Statut et reconnexion" },
     { href: `/${espace}/parametres/espace`, label: "Paramètres", icon: "parametres" },
   ];

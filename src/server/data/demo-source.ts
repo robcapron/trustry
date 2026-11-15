@@ -3,7 +3,8 @@ import { connection } from "next/server";
 import { DEMO_USER, MARKETPLACE_ORDER } from "../demo/seed";
 import { getDemoDataset } from "../demo/store";
 import type { DashboardAlert } from "@/domain/dashboard";
-import type { Rollups } from "@/domain/metrics";
+import { ZERO_TOTALS, type DailyRollup, type Rollups } from "@/domain/metrics";
+import { DEFAULT_TARGETS, type MonthlyRow, type PoleTargets } from "@/domain/monthly-review";
 import type { DateRange } from "@/domain/period";
 import type { Role } from "@/domain/access";
 import type { Connection, Invitation, Member, NavCounts, PillarScore, SessionUser, SyncSummary, WorkspaceSummary } from "../types";
@@ -125,4 +126,82 @@ export async function createInvitation(): Promise<string> {
 
 export async function listInvitations(): Promise<Invitation[]> {
   return [];
+}
+
+export async function getMonthlyRows(workspaceId: string, range: DateRange): Promise<MonthlyRow[]> {
+  const ds = getDemoDataset();
+  const storeById = new Map(ds.stores.map((st) => [st.id, st]));
+  const productById = new Map(ds.products.map((p) => [p.id, p]));
+  const map = new Map<string, MonthlyRow>();
+  for (const m of ds.metrics) {
+    if (m.workspaceId !== workspaceId || m.date < range.from || m.date > range.to) continue;
+    const marketplace = storeById.get(m.storeId)?.marketplace ?? "?";
+    const brand = productById.get(m.productId)?.brand ?? "";
+    const month = m.date.slice(0, 7);
+    const key = `${month}|${marketplace}|${brand}`;
+    let r = map.get(key);
+    if (!r) {
+      r = { month, marketplace, brand, revenueHt: 0, commissions: 0, ads: 0, logistics: 0, returns: 0, cogs: 0, units: 0, orders: 0, returnUnits: 0 };
+      map.set(key, r);
+    }
+    r.revenueHt += m.revenueHt;
+    r.commissions += m.commissions;
+    r.ads += m.ads;
+    r.logistics += m.logistics;
+    r.returns += m.returns;
+    r.cogs += m.cogs;
+    r.units += m.units;
+    r.orders += m.orders;
+    r.returnUnits += m.returnUnits;
+  }
+  return [...map.values()];
+}
+
+export async function getOpex(workspaceId: string): Promise<Record<string, number>> {
+  const ds = getDemoDataset();
+  return Object.fromEntries(
+    Object.entries(ds.opex)
+      .filter(([k]) => k.startsWith(`${workspaceId}:`))
+      .map(([k, v]) => [k.split(":")[1], v]),
+  );
+}
+
+const demoPoleTargets = new Map<string, PoleTargets>();
+
+export async function getPoleTargets(workspaceId: string): Promise<PoleTargets> {
+  return demoPoleTargets.get(workspaceId) ?? DEFAULT_TARGETS;
+}
+
+export async function setPoleTargets(workspaceId: string, targets: PoleTargets): Promise<void> {
+  demoPoleTargets.set(workspaceId, targets);
+}
+
+export async function setMonthlyPlan(workspaceId: string, month: string, plan: { revenueTarget: number | null; opex: number }) {
+  const ds = getDemoDataset();
+  const key = `${workspaceId}:${month}`;
+  if (plan.revenueTarget === null) delete ds.revenueTargets[key];
+  else ds.revenueTargets[key] = plan.revenueTarget;
+  ds.opex[key] = plan.opex;
+}
+
+export async function getDaily(workspaceId: string, range: DateRange): Promise<DailyRollup[]> {
+  const map = new Map<string, DailyRollup>();
+  for (const m of getDemoDataset().metrics) {
+    if (m.workspaceId !== workspaceId || m.date < range.from || m.date > range.to) continue;
+    let d = map.get(m.date);
+    if (!d) map.set(m.date, (d = { ...ZERO_TOTALS, date: m.date }));
+    d.revenueHt += m.revenueHt;
+    d.commissions += m.commissions;
+    d.ads += m.ads;
+    d.logistics += m.logistics;
+    d.returns += m.returns;
+    d.cogs += m.cogs;
+    d.units += m.units;
+    d.orders += m.orders;
+  }
+  return [...map.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export async function getRevenueTarget(workspaceId: string, month: string): Promise<number | null> {
+  return getDemoDataset().revenueTargets[`${workspaceId}:${month}`] ?? null;
 }

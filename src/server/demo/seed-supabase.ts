@@ -92,6 +92,7 @@ export async function seedWorkspaceFromDemo(
       logistics_eur_cents: m.logistics,
       returns_eur_cents: m.returns,
       cogs_eur_cents: m.cogs,
+      returns_units: m.returnUnits,
     })),
   );
   await insert(
@@ -116,6 +117,17 @@ export async function seedWorkspaceFromDemo(
     "pillar_scores",
     mine(ds.pillarScores).map((p) => ({ workspace_id: ws, score_date: p.date, pillar: p.pillar, score: p.score, headline: p.headline })),
   );
-  await insert("alert_rules", [{ workspace_id: ws }]);
+  await supabase.from("alert_rules").upsert({ workspace_id: ws });
+  await insert(
+    "monthly_costs",
+    Object.entries(ds.opex)
+      .filter(([k]) => k.startsWith(`${source.id}:`))
+      .map(([k, v]) => ({
+        workspace_id: ws,
+        month: `${k.split(":")[1]}-01`,
+        opex_eur_cents: v,
+        revenue_target_eur_cents: ds.revenueTargets[k] ?? null,
+      })),
+  );
   return { rows: total };
 }

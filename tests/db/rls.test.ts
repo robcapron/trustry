@@ -116,6 +116,29 @@ suite("RLS multi-tenant", () => {
     expect(Number(net.rows[0].net_profit_eur_cents)).toBe(4500);
   });
 
+  it("revue mensuelle : agrégat mensuel et plan (objectif, OpEx) cloisonnés, écriture réservée aux admins", async () => {
+    const monthly = await asUser(U.lea, (c) => c.query("select * from metrics_monthly($1, '2026-11-01', '2026-11-30')", [WS_SDG]));
+    expect(monthly.rows).toHaveLength(1);
+    expect(monthly.rows[0].month).toBe("2026-11");
+    const foreign = await asUser(U.lea, (c) => c.query("select * from metrics_monthly($1, '2026-11-01', '2026-11-30')", [WS_OTHER]));
+    expect(foreign.rows).toHaveLength(0);
+
+    await db.query("insert into monthly_costs (workspace_id, month, opex_eur_cents, revenue_target_eur_cents) values ($1, '2026-11-01', 120000, 38500000)", [WS_SDG]);
+    const read = await asUser(U.lea, (c) => c.query("select revenue_target_eur_cents from monthly_costs where workspace_id = $1", [WS_SDG]));
+    expect(Number(read.rows[0].revenue_target_eur_cents)).toBe(38500000);
+    const intrus = await asUser(U.intrus, (c) => c.query("select * from monthly_costs"));
+    expect(intrus.rows).toHaveLength(0);
+    for (const user of [U.lea, U.camille]) {
+      const upd = await asUser(user, (c) => c.query("update monthly_costs set revenue_target_eur_cents = 1 where workspace_id = $1", [WS_SDG]));
+      expect(upd.rowCount).toBe(0);
+    }
+    const ok = await asUser(U.robin, (c) => c.query("update monthly_costs set revenue_target_eur_cents = 40000000 where workspace_id = $1", [WS_SDG]));
+    expect(ok.rowCount).toBe(1);
+    await expect(
+      asUser(U.robin, (c) => c.query("insert into monthly_costs (workspace_id, month) values ($1, '2026-11-15')", [WS_SDG])),
+    ).rejects.toThrow();
+  });
+
   it("une invitation fait rejoindre l'espace avec le rôle et les modules prévus, une seule fois", async () => {
     const token = "jeton-secret-de-test";
     await db.query(

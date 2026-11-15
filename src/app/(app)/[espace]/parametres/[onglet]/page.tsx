@@ -11,9 +11,11 @@ import { canManageMembers, canUseModule, MODULE_LABEL, ROLE_LABEL } from "@/doma
 import { isDemoMode } from "@/lib/env";
 import { formatNumber, formatRelative } from "@/lib/format";
 import { MARKETPLACES } from "@/domain/marketplaces";
-import { getCurrentUser, getSyncSummary, getWorkspace, listConnections, listInvitations, listMembers } from "@/server/data";
+import { getCurrentUser, getMonthlyPlan, getSyncSummary, getToday, getWorkspace, listConnections, listInvitations, listMembers } from "@/server/data";
 import type { WorkspaceSummary } from "@/server/types";
 import { InviteForm, MemberRow, type MemberRowData } from "@/components/settings/members";
+import { TargetsForm } from "@/components/settings/targets-form";
+import { monthLabel } from "@/domain/monthly-review";
 import type { ConnectionStatus } from "@/server/types";
 
 const TAB_COPY: Record<SettingsTab, { title: string; description: string }> = {
@@ -87,15 +89,15 @@ export default async function SettingsPage({ params }: PageProps<"/[espace]/para
           ) : null}
         </Card>
       ) : null}
+      {tab === "espace" ? <TargetsCard workspace={workspace} /> : null}
       {tab === "utilisateurs" ? <MembersTab workspace={workspace} /> : null}
       {tab === "alertes" ? (
         <UpcomingScreen
-          phase="Phase 2"
+          phase="Phase 3"
           icon="alertes"
           features={[
             "Seuil de chute de ventes (20 % sur 7 jours par défaut)",
             "Couverture de stock minimale (7 jours)",
-            "TACoS cible par espace",
             "Notifications push iPhone et email",
           ]}
         />
@@ -258,5 +260,35 @@ async function MembersTab({ workspace }: { workspace: WorkspaceSummary }) {
         </Card>
       ) : null}
     </>
+  );
+}
+
+async function TargetsCard({ workspace }: { workspace: WorkspaceSummary }) {
+  const month = (await getToday()).slice(0, 7);
+  const plan = await getMonthlyPlan(workspace.id, month);
+  const euros = (cents: number | null) => (cents === null ? "" : formatNumber(cents / 100));
+  const pct = (v: number) => formatNumber(v, 1);
+  return (
+    <Card id="objectifs">
+      <CardHeader
+        title="Objectifs et cibles"
+        subtitle="L'objectif de CA alimente la prévision d'atterrissage du Dashboard, les cibles alimentent la revue mensuelle."
+      />
+      <TargetsForm
+        espace={workspace.slug}
+        monthLabel={monthLabel(month)}
+        canEdit={canManageMembers(workspace.role)}
+        money={[
+          { name: "objectif", label: "Objectif de CA HT du mois", suffix: "€ HT", value: euros(plan.revenueTarget), hint: "Laisser vide pour ne pas fixer d'objectif" },
+          { name: "opex", label: "Frais internes du mois (OpEx)", suffix: "€ HT", value: euros(plan.opex) },
+        ]}
+        rates={[
+          { name: "tacos", label: "TACoS cible", suffix: "%", value: pct(plan.targets.tacos) },
+          { name: "retours", label: "Taux de retour cible", suffix: "%", value: pct(plan.targets.returnRate) },
+          { name: "logistique", label: "Logistique / CA cible", suffix: "%", value: pct(plan.targets.logisticsRate) },
+          { name: "frais", label: "OpEx / CA cible", suffix: "%", value: pct(plan.targets.opexRate) },
+        ]}
+      />
+    </Card>
   );
 }
