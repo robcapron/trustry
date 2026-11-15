@@ -5,7 +5,8 @@ import { getDemoDataset } from "../demo/store";
 import type { DashboardAlert } from "@/domain/dashboard";
 import type { Rollups } from "@/domain/metrics";
 import type { DateRange } from "@/domain/period";
-import type { Connection, Member, NavCounts, PillarScore, SessionUser, SyncSummary, WorkspaceSummary } from "../types";
+import type { Role } from "@/domain/access";
+import type { Connection, Invitation, Member, NavCounts, PillarScore, SessionUser, SyncSummary, WorkspaceSummary } from "../types";
 import { rollupInMemory } from "./rollups";
 import { summarizeConnections } from "./summaries";
 
@@ -90,4 +91,38 @@ export async function listBlockedListingKeys(workspaceId: string): Promise<strin
   return getDemoDataset()
     .listings.filter((l) => l.workspaceId === workspaceId && l.status === "blocked")
     .map((l) => `${l.storeId}:${l.productId}`);
+}
+
+export async function setAlertStatus(workspaceId: string, alertId: string, status: "todo" | "in_progress" | "resolved"): Promise<void> {
+  // Mode démo : modification en mémoire (perdue au redémarrage)
+  const alert = getDemoDataset().alerts.find((a) => a.workspaceId === workspaceId && a.id === alertId);
+  if (!alert) throw new Error("Alerte introuvable.");
+  alert.status = status;
+}
+
+function demoMember(workspaceId: string, userId: string) {
+  const m = getDemoDataset().members.find((x) => x.workspaceId === workspaceId && x.userId === userId);
+  if (!m) throw new Error("Membre introuvable.");
+  return m;
+}
+
+export async function setMemberRole(workspaceId: string, userId: string, role: Role): Promise<void> {
+  demoMember(workspaceId, userId).role = role;
+}
+
+export async function setMemberModules(workspaceId: string, userId: string, modules: string[]): Promise<void> {
+  demoMember(workspaceId, userId).grantedModules = modules;
+}
+
+export async function removeMember(workspaceId: string, userId: string): Promise<void> {
+  const ds = getDemoDataset();
+  ds.members = ds.members.filter((m) => !(m.workspaceId === workspaceId && m.userId === userId));
+}
+
+export async function createInvitation(): Promise<string> {
+  throw new Error("Les invitations nécessitent Supabase : indisponibles en mode démo.");
+}
+
+export async function listInvitations(): Promise<Invitation[]> {
+  return [];
 }

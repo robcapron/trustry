@@ -57,3 +57,38 @@ export function compareAlerts(a: AlertForSort, b: AlertForSort): number {
 export function sortAlerts<T extends AlertForSort>(alerts: T[]): T[] {
   return [...alerts].sort(compareAlerts);
 }
+
+export const CATEGORY_LABEL: Record<AlertCategory, string> = {
+  blocked_listing: "Référence bloquée",
+  stockout: "Rupture",
+  sales_drop: "Chute de ventes",
+  tacos: "TACoS",
+  sync: "Synchronisation",
+  catalog_error: "Erreur catalogue",
+  order_anomaly: "Anomalie commande",
+  customer_service: "Service client",
+  other: "Autre",
+};
+
+/** Où mener l'action suggérée (chemin relatif à l'espace). */
+export function alertActionPath(category: AlertCategory): string {
+  switch (category) {
+    case "blocked_listing":
+    case "catalog_error":
+      return "/piliers/integration";
+    case "stockout":
+      return "/piliers/catalogue";
+    case "sales_drop":
+      return "/pnl";
+    case "tacos":
+      return "/piliers/publicite-deals";
+    case "sync":
+      return "/parametres/connecteurs";
+    case "order_anomaly":
+      return "/piliers/commandes";
+    case "customer_service":
+      return "/piliers/service-apres-vente";
+    default:
+      return "/alertes";
+  }
+}

@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "@/lib/env";
 
-const PUBLIC_PATHS = ["/connexion", "/auth", "/manifest.webmanifest"];
+const PUBLIC_PATHS = ["/connexion", "/auth", "/invitation", "/manifest.webmanifest"];
 
 /** Rafraîchit la session Supabase et redirige vers /connexion si besoin (vérification optimiste). */
 export async function updateSession(request: NextRequest) {

@@ -1,11 +1,12 @@
 import "server-only";
+import { createHash, randomBytes } from "node:crypto";
 import type { Role } from "@/domain/access";
 import type { DashboardAlert } from "@/domain/dashboard";
 import type { MetricTotals, Rollups } from "@/domain/metrics";
 import type { DateRange } from "@/domain/period";
 import { parisToday } from "@/lib/dates";
 import { createSupabaseServerClient } from "../supabase/server";
-import type { Connection, ConnectionStatus, MarketplaceCode, Member, NavCounts, PillarScore, SessionUser, SyncSummary, WorkspaceSummary } from "../types";
+import type { Connection, ConnectionStatus, Invitation, MarketplaceCode, Member, NavCounts, PillarScore, SessionUser, SyncSummary, WorkspaceSummary } from "../types";
 import { summarizeConnections } from "./summaries";
 
 export async function getCurrentUser(): Promise<SessionUser | null> {
@@ -162,12 +163,13 @@ export async function getRollups(workspaceId: string, range: DateRange): Promise
   return {
     daily: ((daily.data ?? []) as (TotalsRow & { metric_date: string })[]).map((r) => ({ ...totals(r), date: r.metric_date })),
     channels: ((channels.data ?? []) as (TotalsRow & { marketplace: string })[]).map((r) => ({ ...totals(r), marketplace: r.marketplace })),
-    skus: ((skus.data ?? []) as (TotalsRow & { product_id: string; sku: string; title: string; store_id: string; marketplace: string; country: string })[]).map(
+    skus: ((skus.data ?? []) as (TotalsRow & { product_id: string; sku: string; title: string; brand: string; store_id: string; marketplace: string; country: string })[]).map(
       (r) => ({
         ...totals(r),
         productId: r.product_id,
         sku: r.sku,
         title: r.title,
+        brand: r.brand,
         storeId: r.store_id,
         marketplace: r.marketplace,
         country: r.country,
@@ -223,4 +225,81 @@ export async function listBlockedListingKeys(workspaceId: string): Promise<strin
   const supabase = await createSupabaseServerClient();
   const { data } = await supabase.from("listings").select("store_id, product_id").eq("workspace_id", workspaceId).eq("status", "blocked");
   return (data ?? []).map((l) => `${l.store_id}:${l.product_id}`);
+}
+
+export async function setAlertStatus(workspaceId: string, alertId: string, status: "todo" | "in_progress" | "resolved"): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  const { data: claims } = await supabase.auth.getClaims();
+  const { data, error } = await supabase
+    .from("alerts")
+    .update({
+      status,
+      resolved_at: status === "resolved" ? new Date().toISOString() : null,
+      resolved_by: status === "resolved" ? (claims?.claims?.sub ?? null) : null,
+    })
+    .eq("workspace_id", workspaceId)
+    .eq("id", alertId)
+    .select("id");
+  if (error) throw new Error(`Mise à jour impossible : ${error.message}`);
+  if (!data?.length) throw new Error("Vous n'avez pas les droits pour modifier cette alerte.");
+}
+
+async function mustAffect(query: PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>, what: string) {
+  const { data, error } = await query;
+  if (error) throw new Error(`${what} impossible : ${error.message}`);
+  if (!data?.length) throw new Error(`${what} refusé : droits insuffisants.`);
+}
+
+export async function setMemberRole(workspaceId: string, userId: string, role: Role): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  await mustAffect(
+    supabase.from("workspace_members").update({ role }).eq("workspace_id", workspaceId).eq("user_id", userId).neq("role", "owner").select("user_id"),
+    "Changement de rôle",
+  );
+}
+
+export async function setMemberModules(workspaceId: string, userId: string, modules: string[]): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  await mustAffect(
+    supabase.from("workspace_members").update({ granted_modules: modules }).eq("workspace_id", workspaceId).eq("user_id", userId).select("user_id"),
+    "Changement d'accès",
+  );
+}
+
+export async function removeMember(workspaceId: string, userId: string): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  await mustAffect(
+    supabase.from("workspace_members").delete().eq("workspace_id", workspaceId).eq("user_id", userId).select("user_id"),
+    "Retrait du membre",
+  );
+}
+
+/** Crée une invitation et renvoie le jeton (seul son hash est stocké). */
+export async function createInvitation(workspaceId: string, email: string, role: Role, modules: string[]): Promise<string> {
+  const supabase = await createSupabaseServerClient();
+  const { data: claims } = await supabase.auth.getClaims();
+  const token = randomBytes(24).toString("base64url");
+  const tokenHash = createHash("sha256").update(token, "utf8").digest("hex");
+  const { error } = await supabase.from("invitations").insert({
+    workspace_id: workspaceId,
+    email: email.toLowerCase(),
+    role,
+    granted_modules: modules,
+    token_hash: tokenHash,
+    invited_by: claims?.claims?.sub ?? null,
+  });
+  if (error) throw new Error(`Invitation impossible : ${error.message}`);
+  return token;
+}
+
+export async function listInvitations(workspaceId: string): Promise<Invitation[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data } = await supabase
+    .from("invitations")
+    .select("id, email, role, granted_modules, expires_at")
+    .eq("workspace_id", workspaceId)
+    .is("accepted_at", null)
+    .gt("expires_at", new Date().toISOString())
+    .order("created_at", { ascending: false });
+  return (data ?? []).map((i) => ({ id: i.id, email: i.email, role: i.role, grantedModules: i.granted_modules ?? [], expiresAt: i.expires_at }));
 }

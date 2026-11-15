@@ -139,3 +139,11 @@ export type Member = {
   role: Role;
   grantedModules: string[];
 };
+
+export type Invitation = {
+  id: string;
+  email: string;
+  role: Role;
+  grantedModules: string[];
+  expiresAt: string;
+};

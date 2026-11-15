@@ -116,6 +116,33 @@ suite("RLS multi-tenant", () => {
     expect(Number(net.rows[0].net_profit_eur_cents)).toBe(4500);
   });
 
+  it("une invitation fait rejoindre l'espace avec le rôle et les modules prévus, une seule fois", async () => {
+    const token = "jeton-secret-de-test";
+    await db.query(
+      "insert into invitations (workspace_id, email, role, granted_modules, token_hash) values ($1, 'intrus@test.fr', 'manager', '{import-oms}', encode(sha256(convert_to($2, 'UTF8')), 'hex'))",
+      [WS_SDG, token],
+    );
+    // Mauvais email : refus
+    await expect(
+      asUser(U.orgAdmin, async (c) => {
+        await c.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ sub: U.orgAdmin, email: "orgadmin@test.fr" })]);
+        return c.query("select accept_invitation($1)", [token]);
+      }),
+    ).rejects.toThrow(/autre adresse/);
+    // Bon email : accepté (on valide dans la transaction)
+    await db.query("begin");
+    await db.query("set local role authenticated");
+    await db.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ sub: U.intrus, email: "intrus@test.fr" })]);
+    const res = await db.query("select accept_invitation($1) as slug", [token]);
+    expect(res.rows[0].slug).toBe("sdg-distribution");
+    const seen = await db.query("select slug from workspaces order by slug");
+    expect(seen.rows.map((r) => r.slug)).toContain("sdg-distribution");
+    const oms = await db.query("select private.can_use_module($1, 'import-oms') as ok", [WS_SDG]);
+    expect(oms.rows[0].ok).toBe(true);
+    await expect(db.query("select accept_invitation($1)", [token])).rejects.toThrow(/déjà utilisée/);
+    await db.query("rollback");
+  });
+
   afterAll(async () => {
     await db?.end();
   });

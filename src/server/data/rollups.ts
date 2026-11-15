@@ -59,6 +59,7 @@ export function rollupInMemory(metrics: DailyMetric[], stores: Store[], products
           productId: product.id,
           sku: product.sku,
           title: product.title,
+          brand: product.brand,
           storeId: store.id,
           marketplace: store.marketplace,
           country: store.country,

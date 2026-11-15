@@ -67,3 +67,48 @@ test("aucun tiret long dans les pages rendues", async ({ page }) => {
     expect(text, path).not.toMatch(new RegExp(`[${String.fromCharCode(0x2013, 0x2014)}]`));
   }
 });
+
+test("P&L : canal > pays > SKU, filtres et export CSV", async ({ page, isMobile }) => {
+  await page.goto("/sdg-distribution/pnl");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("P&L détaillé");
+  await expect(page.getByRole("rowheader", { name: /Amazon UE/ })).toBeVisible();
+  await page.getByRole("button", { name: "Déplier Amazon UE" }).click();
+  await expect(page.getByRole("rowheader", { name: /(^| )FR$/ }).first()).toBeVisible();
+  if (!isMobile) {
+    await page.getByRole("button", { name: "Déplier FR" }).first().click();
+    await expect(page.getByText("ACTA-HLM-ADV-BLK-M").first()).toBeVisible();
+    const download = page.waitForEvent("download");
+    await page.getByRole("link", { name: "Exporter en CSV" }).click();
+    const file = await download;
+    expect(file.suggestedFilename()).toMatch(/^pnl-sdg-distribution-.*\.csv$/);
+  }
+  await page.getByLabel("Canal").selectOption("decathlon");
+  await page.getByRole("button", { name: "Filtrer" }).click();
+  await expect(page).toHaveURL(/canal=decathlon/);
+  await expect(page.getByRole("rowheader", { name: /Amazon UE/ })).toHaveCount(0);
+});
+
+test("Centre d'alertes : priorité, filtres et changement de statut", async ({ page }) => {
+  await page.goto("/sdg-distribution/alertes");
+  const first = page.locator("li[id^=alerte-]").first();
+  await expect(first).toContainText("Référence bloquée");
+  await page.getByRole("link", { name: /Infos/ }).click();
+  await expect(page.locator("li[id^=alerte-]")).toHaveCount(1);
+  await expect(page.locator("li[id^=alerte-]").first()).toContainText("Synchro Allegro en retard");
+  const card = page.locator("li[id^=alerte-]").first();
+  await card.getByRole("button", { name: "En cours" }).click();
+  await expect(card.getByRole("button", { name: "En cours" })).toHaveAttribute("aria-pressed", "true");
+  await card.getByRole("button", { name: "À traiter" }).click();
+  await expect(card.getByRole("button", { name: "À traiter" })).toHaveAttribute("aria-pressed", "true");
+});
+
+test("Utilisateurs : l'accès Import OMS se règle membre par membre", async ({ page, isMobile }) => {
+  test.skip(isMobile, "réglage d'administration fait sur ordinateur");
+  await page.goto("/sdg-distribution/parametres/utilisateurs");
+  const lea = page.getByRole("switch", { name: "Accès Import OMS pour Léa Morel" });
+  await expect(lea).toHaveAttribute("aria-checked", "false");
+  await lea.click();
+  await expect(page.getByRole("switch", { name: "Accès Import OMS pour Léa Morel" })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("switch", { name: "Accès Import OMS pour Léa Morel" }).click();
+  await expect(page.getByRole("switch", { name: "Accès Import OMS pour Léa Morel" })).toHaveAttribute("aria-checked", "false");
+});

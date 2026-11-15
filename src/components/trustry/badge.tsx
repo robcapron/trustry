@@ -67,6 +67,6 @@ export function CountBadge({ count, className }: { count: number; className?: st
 }
 
 /** Code SKU / identifiant en police mono sur fond gris. */
-export function Code({ children }: { children: ReactNode }) {
-  return <code className="inline-block rounded-chip bg-surface px-[7px] py-px font-mono text-2xs">{children}</code>;
+export function Code({ children, className }: { children: ReactNode; className?: string }) {
+  return <code className={cn("inline-block rounded-chip bg-surface px-[7px] py-px font-mono text-2xs", className)}>{children}</code>;
 }

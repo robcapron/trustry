@@ -29,6 +29,7 @@ export type SkuStoreRollup = MetricTotals & {
   productId: string;
   sku: string;
   title: string;
+  brand: string;
   storeId: string;
   marketplace: string;
   country: string;

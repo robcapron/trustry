@@ -60,7 +60,7 @@ export function PriorityAlerts({ view, alertsHref }: { view: DashboardView; aler
                 </div>
                 {alert.suggestedAction ? (
                   <Button asChild size="sm" variant={alert.severity === "critical" ? "primary" : "secondary"}>
-                    <Link href={`${alertsHref}?alerte=${alert.id}`}>{alert.suggestedAction}</Link>
+                    <Link href={`${alertsHref}?alerte=${alert.id}#alerte-${alert.id}`}>{alert.suggestedAction}</Link>
                   </Button>
                 ) : null}
               </li>

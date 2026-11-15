@@ -26,6 +26,7 @@ Porteur : Robin Capron (SDG Distribution). Interface 100 % en français.
 - Fonctions d'accès SQL dans le schéma `private` (security definer, hors API) : `is_member`, `can_write`, `can_admin`, `can_use_module`.
 - Modules optionnels (`workspaces.enabled_modules`) accordés membre par membre (`workspace_members.granted_modules`). Owner/admin y ont accès d'office.
 - **Import OMS** : outil HTML existant de SDG, intégré **tel quel** (`src/modules/import-oms/`), servi par une route protégée (jamais dans `public/`). Activé uniquement sur l'espace SDG. Ne pas modifier le HTML sans demande explicite.
+- Invitations : lien à usage unique (jeton haché sha256 en base), `accept_invitation` et `invitation_preview` sont security definer volontairement (protégés par le jeton et l'email) : l'avertissement de l'advisor Supabase est attendu.
 - Toute nouvelle table métier : ajouter `workspace_id`, l'ajouter à la boucle RLS ou écrire ses policies, et un test dans `tests/db/rls.test.ts`.
 
 ## Stack
@@ -82,7 +83,7 @@ pnpm typecheck && pnpm lint && pnpm build
 |---|---|---|
 | 0 | Repo, design system, layout et navigation (desktop + iPhone), auth, multi-tenant + RLS, données d'exemple, Import OMS intégré | Fait |
 | 1 | Dashboard global + sélecteur d'espace (données mock) | Fait |
-| 2 | P&L détaillé + Centre d'alertes + notifications push, gestion des membres et accès | A faire |
-| 3 | Connecteurs : écran, MockAdapter, Amazon SP-API, sources Odoo (coûts d'achat), Google Drive (coûts transport), BCE | A faire |
+| 2 | P&L détaillé (canal > pays > SKU, filtres, export CSV) + Centre d'alertes + gestion des membres, accès et invitations | Fait |
+| 3 | Connecteurs : écran, MockAdapter, Amazon SP-API, sources Odoo (coûts d'achat), Google Drive (coûts transport), BCE, moteur d'alertes (Inngest) + notifications push | A faire |
 | 4 | Serveur MCP (lecture, actions avec validation, 3 niveaux de permission) | A faire |
 | 5 | Les 7 modules piliers | A faire |

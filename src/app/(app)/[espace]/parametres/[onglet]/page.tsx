@@ -11,7 +11,9 @@ import { canManageMembers, canUseModule, MODULE_LABEL, ROLE_LABEL } from "@/doma
 import { isDemoMode } from "@/lib/env";
 import { formatNumber, formatRelative } from "@/lib/format";
 import { MARKETPLACES } from "@/domain/marketplaces";
-import { getSyncSummary, getWorkspace, listConnections, listMembers } from "@/server/data";
+import { getCurrentUser, getSyncSummary, getWorkspace, listConnections, listInvitations, listMembers } from "@/server/data";
+import type { WorkspaceSummary } from "@/server/types";
+import { InviteForm, MemberRow, type MemberRowData } from "@/components/settings/members";
 import type { ConnectionStatus } from "@/server/types";
 
 const TAB_COPY: Record<SettingsTab, { title: string; description: string }> = {
@@ -85,7 +87,7 @@ export default async function SettingsPage({ params }: PageProps<"/[espace]/para
           ) : null}
         </Card>
       ) : null}
-      {tab === "utilisateurs" ? <MembersTab workspaceId={workspace.id} enabledModules={workspace.enabledModules} /> : null}
+      {tab === "utilisateurs" ? <MembersTab workspace={workspace} /> : null}
       {tab === "alertes" ? (
         <UpcomingScreen
           phase="Phase 2"
@@ -199,45 +201,62 @@ async function ConnectorsTab({ workspaceId }: { workspaceId: string }) {
   );
 }
 
-async function MembersTab({ workspaceId, enabledModules }: { workspaceId: string; enabledModules: string[] }) {
-  const members = await listMembers(workspaceId);
-  const showOms = enabledModules.includes("import-oms");
+async function MembersTab({ workspace }: { workspace: WorkspaceSummary }) {
+  const [list, invitations, user] = await Promise.all([listMembers(workspace.id), listInvitations(workspace.id), getCurrentUser()]);
+  const enabled = workspace.enabledModules;
+  const showOms = enabled.includes("import-oms");
+  const canManage = canManageMembers(workspace.role);
+  const rows: MemberRowData[] = list.map((m) => ({
+    userId: m.userId,
+    fullName: m.fullName,
+    email: m.email,
+    role: m.role,
+    omsAccess: canUseModule({ module: "import-oms", role: m.role, enabledModules: enabled, grantedModules: m.grantedModules }),
+    isSelf: m.userId === user?.id,
+  }));
   return (
-    <Card>
-      <CardHeader title="Membres" subtitle={`${members.length} ${members.length > 1 ? "personnes" : "personne"}`} />
-      <div className="-mx-1 overflow-x-auto">
-        <table className="w-full min-w-[480px] text-left text-ui">
-          <thead>
-            <tr className="border-b border-line text-caption text-muted">
-              <th className="py-2 pr-2 font-medium">Membre</th>
-              <th className="px-2 py-2 font-medium">Rôle</th>
-              {showOms ? <th className="py-2 pl-2 font-medium">Import OMS</th> : null}
-            </tr>
-          </thead>
-          <tbody>
-            {members.map((m) => {
-              const oms = canUseModule({ module: "import-oms", role: m.role, enabledModules, grantedModules: m.grantedModules });
-              return (
-                <tr key={m.userId} className="border-b border-line last:border-0">
-                  <td className="py-3 pr-2">
-                    <span className="block font-semibold">{m.fullName}</span>
-                    {m.email ? <span className="text-caption text-muted">{m.email}</span> : null}
-                  </td>
-                  <td className="px-2 py-3">{ROLE_LABEL[m.role]}</td>
-                  {showOms ? (
-                    <td className="py-3 pl-2">
-                      <StatusBadge tone={oms ? "bon" : "neutre"}>{oms ? "Accès" : "Pas d'accès"}</StatusBadge>
-                    </td>
-                  ) : null}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <p className="mt-4 text-caption text-muted">
-        Propriétaire et admin ont accès à tous les modules activés. Invitations et modification des accès : Phase 2.
-      </p>
-    </Card>
+    <>
+      <Card>
+        <CardHeader title="Membres" subtitle={`${list.length} ${list.length > 1 ? "personnes" : "personne"}`} />
+        <div className="-mx-1 overflow-x-auto">
+          <table className="w-full min-w-[560px] text-left text-ui">
+            <thead>
+              <tr className="border-b border-line text-caption text-muted">
+                <th className="py-2 pr-2 font-medium">Membre</th>
+                <th className="px-2 py-2 font-medium">Rôle</th>
+                {showOms ? <th className="px-2 py-2 font-medium">Import OMS</th> : null}
+                <th className="py-2 pl-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((m) => (
+                <MemberRow key={m.userId} espace={workspace.slug} member={m} canManage={canManage} showOms={showOms} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-4 text-caption text-muted">
+          Propriétaire et admin ont accès à tous les modules activés. Lecture seule : consultation sans modification.
+        </p>
+      </Card>
+      {canManage ? (
+        <Card>
+          <CardHeader title="Inviter un membre" subtitle="La personne crée son accès avec le lien reçu, puis rejoint l'espace avec le rôle choisi." />
+          <InviteForm espace={workspace.slug} showOms={showOms} />
+          {invitations.length ? (
+            <ul className="mt-5 border-t border-line pt-3">
+              {invitations.map((i) => (
+                <li key={i.id} className="flex flex-wrap items-center justify-between gap-2 py-1.5 text-ui">
+                  <span>
+                    {i.email} <span className="text-muted">- {ROLE_LABEL[i.role]}</span>
+                  </span>
+                  <StatusBadge tone="info">En attente</StatusBadge>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </Card>
+      ) : null}
+    </>
   );
 }
