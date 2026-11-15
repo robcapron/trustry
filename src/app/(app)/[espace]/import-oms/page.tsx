@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { PageHeader } from "@/components/trustry/page-header";
 import { EmptyState } from "@/components/trustry/states";
 import { workspaceWithModule } from "@/server/access";
 
@@ -17,15 +16,11 @@ export default async function ImportOmsPage({ params }: PageProps<"/[espace]/imp
 
   return (
     <>
-      <PageHeader
-        eyebrow={`Module réservé - ${workspace.name}`}
-        title="Import OMS"
-        description="Exports CSV des marketplaces > res_partner (Odoo) > contact_ID > ExportOMS. Tout est traité dans votre navigateur."
-      />
+      <h1 className="sr-only">Import OMS - {workspace.name}</h1>
       <iframe
         src={`/${espace}/import-oms/outil`}
         title="Outil Import Commandes SDG"
-        className="hidden h-[calc(100dvh-210px)] min-h-[640px] w-full rounded-card border-0 bg-asphalte lg:block"
+        className="hidden h-[calc(100dvh-72px)] min-h-[640px] w-full rounded-card border-0 bg-asphalte lg:block"
       />
       <div className="lg:hidden">
         <EmptyState

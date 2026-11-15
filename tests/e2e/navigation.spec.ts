@@ -32,7 +32,7 @@ test("Import OMS est réservé à l'espace SDG", async ({ page, request, isMobil
   test.skip(isMobile, "Import OMS est un usage ordinateur");
   await page.goto("/sdg-distribution/dashboard");
   await page.getByRole("link", { name: "Import OMS" }).click();
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Import OMS");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(/^Import OMS/);
   await expect(page.frameLocator("iframe").getByText("Glisse ici tes CSV du jour")).toBeVisible();
 
   expect((await request.get("/kraken-surf/import-oms/outil")).status()).toBe(404);
