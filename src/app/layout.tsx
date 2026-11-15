@@ -6,7 +6,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: { default: "Trustry", template: "%s - Trustry" },
-  description: "Pilotez le profit réel de vos marketplaces : canaux, pays, SKU, alertes et 7 piliers.",
+  description: "Le pilotage de vos marketplaces : profit réel par canal, pays et SKU, alertes priorisées et 7 piliers.",
   applicationName: "Trustry",
   appleWebApp: { capable: true, title: "Trustry", statusBarStyle: "default" },
   formatDetection: { telephone: false },

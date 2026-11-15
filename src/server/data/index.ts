@@ -5,7 +5,7 @@ import type { Role } from "@/domain/access";
 import { buildDashboard, type DashboardView } from "@/domain/dashboard";
 import { buildPeriod, type PeriodKey } from "@/domain/period";
 import { buildPnl, type PnlFilters, type PnlView } from "@/domain/pnl";
-import { buildForecast, forecastRanges, type Forecast } from "@/domain/forecast";
+import { buildForecast, forecastRanges, periodMonths, type Forecast, type ForecastScope } from "@/domain/forecast";
 import { buildMonthlyReview, previousMonth, type MonthlyReview } from "@/domain/monthly-review";
 import { isDemoMode } from "@/lib/env";
 import { MARKETPLACE_NAMES } from "@/domain/marketplaces";
@@ -115,22 +115,25 @@ export const getMonthlyReview = cache(async (workspaceId: string, month: string)
   return { ...buildMonthlyReview({ rows, opex, today, selectedMonth: month, targets, names: MARKETPLACE_NAMES }), today };
 });
 
-/** Prévision d'atterrissage fin de mois (indépendante de la période affichée). */
-export const getForecast = cache(async (workspaceId: string): Promise<Forecast> => {
+/** Prévision d'atterrissage fin de mois ou fin de trimestre. */
+export const getForecast = cache(async (workspaceId: string, scope: ForecastScope = "mois"): Promise<Forecast> => {
   const src = source();
   const today = await src.getToday();
-  const r = forecastRanges(today);
-  const [monthToDate, recent, lastYearDaily, previousMonth, lastYearMonth, target] = await Promise.all([
+  const r = forecastRanges(today, scope);
+  const [monthToDate, recent, lastYearDaily, previousMonth, lastYearMonth, targets] = await Promise.all([
     src.getDaily(workspaceId, r.monthToDate),
     src.getDaily(workspaceId, r.recent),
     src.getDaily(workspaceId, r.lastYear),
     src.getDaily(workspaceId, r.previousMonth),
     src.getDaily(workspaceId, r.lastYearMonth),
-    src.getRevenueTarget(workspaceId, today.slice(0, 7)),
+    Promise.all(periodMonths(today, scope).map((m) => src.getRevenueTarget(workspaceId, m))),
   ]);
+  // Trimestre : somme des 3 objectifs mensuels, seulement s'ils sont tous saisis (sinon comparaison trompeuse)
+  const target = targets.every((t) => t !== null) ? (targets as number[]).reduce((a, b) => a + b, 0) : null;
   const total = (rows: { revenueHt: number }[]) => (rows.length ? rows.reduce((t, d) => t + d.revenueHt, 0) : null);
   return buildForecast({
     today,
+    scope,
     monthToDate,
     recent,
     lastYearDaily,

@@ -41,7 +41,7 @@ export default async function ConnexionPage({ searchParams }: PageProps<"/connex
       </section>
       <section aria-hidden className="relative hidden overflow-hidden bg-carbone lg:flex lg:flex-col lg:justify-end lg:p-14">
         <p className="font-brand text-[56px] leading-[0.95] font-black text-blanc italic">
-          Le profit réel
+          Le pilotage
           <br />
           de vos <span className="text-fluo">marketplaces.</span>
         </p>

@@ -36,6 +36,13 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
 /** Prévision d'atterrissage fin de mois : réalisé, projection, fourchette et objectif. */
 export function ForecastCard({ forecast: f, settingsHref }: { forecast: Forecast; settingsHref: string | null }) {
   const month = monthName(f.monthEnd).toLowerCase();
+  const year = Number(f.start.slice(0, 4));
+  const q = Math.floor((Number(f.start.slice(5, 7)) - 1) / 3) + 1;
+  const isQuarter = f.scope === "trimestre";
+  const title = isQuarter ? `Atterrissage fin T${q} ${year}` : `Atterrissage fin ${month}`;
+  const prevLabel = isQuarter ? `T${q === 1 ? 4 : q - 1}` : monthLabel(previousMonth(f.month)).replace(/ \d{4}$/, "");
+  const lyLabel = isQuarter ? `T${q} ${year - 1}` : monthLabel(`${year - 1}${f.month.slice(4)}`);
+  const since = isQuarter ? "depuis le début du trimestre" : "depuis le 1er du mois";
   const status = targetStatus(f.targetProgress);
   // Échelle de la barre : le plus grand de l'objectif et du haut de fourchette
   const max = Math.max(f.high, f.target ?? 0) * 1.04;
@@ -47,7 +54,7 @@ export function ForecastCard({ forecast: f, settingsHref }: { forecast: Forecast
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 id="forecast-title" className="text-title font-semibold tracking-[-0.015em]">
-            Atterrissage fin {month}
+            {title}
           </h2>
           <p className="mt-0.5 text-ui text-muted">
             Prévision du CA HT au {Number(f.monthEnd.slice(8, 10))} {month} - {f.closedDays} jours clos, {f.remainingDays} restants
@@ -66,8 +73,8 @@ export function ForecastCard({ forecast: f, settingsHref }: { forecast: Forecast
             </span>
           </div>
           <div className="flex flex-wrap gap-x-4 gap-y-1">
-            <Compare label={monthLabel(previousMonth(f.month)).replace(/ \d{4}$/, "")} delta={f.deltaVsPreviousMonth} />
-            <Compare label={monthLabel(`${Number(f.month.slice(0, 4)) - 1}${f.month.slice(4)}`)} delta={f.deltaVsLastYear} />
+            <Compare label={prevLabel} delta={f.deltaVsPreviousMonth} />
+            <Compare label={lyLabel} delta={f.deltaVsLastYear} />
           </div>
 
           {/* Barre : réalisé (plein), projection (hachuré), fourchette, objectif */}
@@ -113,7 +120,7 @@ export function ForecastCard({ forecast: f, settingsHref }: { forecast: Forecast
 
         <div className="grid grid-cols-2 gap-x-6 gap-y-4 border-line max-lg:border-t max-lg:pt-4 lg:border-l lg:pl-6 sm:grid-cols-4 lg:grid-cols-2">
           <Stat label="Profit net projeté" value={formatEur(f.netProfit)} hint="à marge constante" />
-          <Stat label="Marge nette" value={f.netMargin === null ? "-" : formatPercent(f.netMargin)} hint="depuis le 1er du mois" />
+          <Stat label="Marge nette" value={f.netMargin === null ? "-" : formatPercent(f.netMargin)} hint={since} />
           <Stat label="Rythme actuel" value={`${formatEur(f.runRateDaily)} / j`} hint="14 derniers jours clos" />
           {f.requiredDaily !== null ? (
             <Stat
@@ -122,7 +129,7 @@ export function ForecastCard({ forecast: f, settingsHref }: { forecast: Forecast
               hint={onTrack ? "atteignable au rythme actuel" : "pour atteindre l'objectif"}
             />
           ) : (
-            <Stat label="TACoS" value={f.tacos === null ? "-" : formatPercent(f.tacos)} hint="depuis le 1er du mois" />
+            <Stat label="TACoS" value={f.tacos === null ? "-" : formatPercent(f.tacos)} hint={since} />
           )}
         </div>
       </div>
@@ -132,7 +139,7 @@ export function ForecastCard({ forecast: f, settingsHref }: { forecast: Forecast
         {f.seasonalLanding !== null ? (
           <>
             {" "}
-            - corrigé du profil de {month} {Number(f.month.slice(0, 4)) - 1} (Black Friday, jours de semaine) :{" "}
+            - corrigé du profil {isQuarter ? `du ${lyLabel}` : `de ${month} ${year - 1}`} (Black Friday, jours de semaine) :{" "}
             <b className="text-ink tabular">{formatEur(f.seasonalLanding)}</b>
           </>
         ) : (

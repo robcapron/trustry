@@ -18,7 +18,8 @@ Porteur : Robin Capron (SDG Distribution). Interface 100 % en français.
 - Chute de ventes : l'alerte doit identifier les SKU concernés ou indiquer que la baisse est liée au compte (`scope = 'account'`).
 - Coût de retour = remboursement HT + frais de retour - valeur restockée.
 - Revue mensuelle (`src/domain/monthly-review.ts`, reprise du Sheet "Mensu | Analyse") : 4 pôles à améliorer chaque mois, tous en taux "plus bas = mieux" : Acquisition (TACoS), Retours (unités retournées / unités vendues), Logistique (logistique / CA), Frais internes (OpEx / CA). Cibles dans `alert_rules`, OpEx et objectif de CA par mois dans `monthly_costs`. Marge nette de la revue = après OpEx.
-- Prévision d'atterrissage (`src/domain/forecast.ts`) : réalisé des jours clos + jours restants au rythme des 14 derniers jours clos, corrigé du profil N-1 aligné à 364 jours (garde jours de semaine et Black Friday). Fourchette = moitié de l'écart entre les 2 méthodes, bornée 5 % - 12 %. Profit projeté à marge constante.
+- Prévision d'atterrissage (`src/domain/forecast.ts`) : réalisé des jours clos + jours restants au rythme des 14 derniers jours clos, corrigé du profil N-1 aligné à 364 jours (garde jours de semaine et Black Friday). Fourchette = moitié de l'écart entre les 2 méthodes, bornée 5 % - 12 %. Profit projeté à marge constante. Période « Trimestre » : atterrissage fin de trimestre, objectif = somme des 3 objectifs mensuels (affiché seulement si les 3 sont saisis).
+- Objectifs SDG : ligne « CA Prévi » de l'onglet « 2026 Prévi » du Sheet Suivi Production Marketplace, importés dans `monthly_costs` (le chargement des données d'exemple ne remplace jamais un mois déjà saisi).
 
 ## Multi-tenant et accès
 

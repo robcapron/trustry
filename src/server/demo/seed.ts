@@ -449,9 +449,11 @@ function buildWorkspace(ds: DemoDataset, seed: WorkspaceSeed, now: Date) {
     if (m.workspaceId !== wsId) continue;
     byMonth.set(m.date.slice(0, 7), (byMonth.get(m.date.slice(0, 7)) ?? 0) + m.revenueHt);
   }
-  for (const month of byMonth.keys()) {
-    const ly = byMonth.get(`${Number(month.slice(0, 4)) - 1}${month.slice(4)}`);
-    if (ly) ds.revenueTargets[`${wsId}:${month}`] = Math.round((ly * 1.45) / 500_000) * 500_000;
+  // (mois passés, en cours et à venir jusqu'à fin de trimestre, à partir de l'historique N-1)
+  const horizon = `${ds.today.slice(0, 4)}-${String(Math.floor((Number(ds.today.slice(5, 7)) - 1) / 3) * 3 + 3).padStart(2, "0")}`;
+  for (const [lyMonth, ly] of byMonth) {
+    const month = `${Number(lyMonth.slice(0, 4)) + 1}${lyMonth.slice(4)}`;
+    if (month <= horizon) ds.revenueTargets[`${wsId}:${month}`] = Math.round((ly * 1.45) / 500_000) * 500_000;
   }
 }
 

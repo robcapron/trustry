@@ -1,5 +1,5 @@
 /**
- * Prévision d'atterrissage fin de mois (pur, testé).
+ * Prévision d'atterrissage fin de mois ou fin de trimestre (pur, testé).
  *
  * Réalisé = jours clos du mois (le jour en cours, partiel, est projeté).
  * Deux méthodes pour les jours restants :
@@ -18,13 +18,18 @@ export const YEAR_SHIFT_DAYS = 364;
 
 export type Confidence = "faible" | "moyenne" | "bonne";
 
+export type ForecastScope = "mois" | "trimestre";
+
 export type Forecast = {
-  month: string; // YYYY-MM
+  scope: ForecastScope;
+  month: string; // YYYY-MM du jour
+  start: string;
+  /** dernier jour de la période projetée (fin de mois ou de trimestre) */
   monthEnd: string;
   daysInMonth: number;
   closedDays: number;
   remainingDays: number;
-  /** réalisé depuis le 1er, jour en cours inclus (comme le Dashboard) */
+  /** réalisé depuis le début de la période, jour en cours inclus (comme le Dashboard) */
   realized: MetricTotals;
   realizedClosedRevenue: number;
   landing: number;
@@ -44,7 +49,7 @@ export type Forecast = {
   lastYear: number | null;
   deltaVsLastYear: number | null;
   target: number | null;
-  /** atterrissage / objectif, en % */
+  /** atterrissage / objectif, en % (trimestre : somme des objectifs mensuels) */
   targetProgress: number | null;
   /** CA journalier nécessaire sur les jours restants pour atteindre l'objectif */
   requiredDaily: number | null;
@@ -53,7 +58,8 @@ export type Forecast = {
 
 export type ForecastInput = {
   today: string;
-  /** jours du mois en cours, du 1er à aujourd'hui inclus */
+  scope?: ForecastScope;
+  /** jours de la période en cours, du premier jour à aujourd'hui inclus */
   monthToDate: DailyRollup[];
   /** au moins les 14 jours clos précédant aujourd'hui */
   recent: DailyRollup[];
@@ -64,17 +70,35 @@ export type ForecastInput = {
   target: number | null;
 };
 
+const pad = (n: number) => String(n).padStart(2, "0");
+const lastDay = (y: number, m: number) => new Date(Date.UTC(y, m, 0)).getUTCDate();
+
 export function monthEnd(today: string): string {
   const [y, m] = today.split("-").map(Number);
-  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
-  return `${today.slice(0, 7)}-${String(last).padStart(2, "0")}`;
+  return `${today.slice(0, 7)}-${pad(lastDay(y, m))}`;
+}
+
+/** Premier et dernier jour de la période (mois ou trimestre civil) contenant `today`. */
+export function periodBounds(today: string, scope: ForecastScope): { start: string; end: string } {
+  const [y, m] = today.split("-").map(Number);
+  if (scope === "mois") return { start: `${today.slice(0, 7)}-01`, end: monthEnd(today) };
+  const q = Math.floor((m - 1) / 3) * 3 + 1;
+  return { start: `${y}-${pad(q)}-01`, end: `${y}-${pad(q + 2)}-${pad(lastDay(y, q + 2))}` };
+}
+
+/** Mois (YYYY-MM) couverts par la période, pour additionner les objectifs mensuels. */
+export function periodMonths(today: string, scope: ForecastScope): string[] {
+  const { start } = periodBounds(today, scope);
+  const [y, m] = start.split("-").map(Number);
+  return Array.from({ length: scope === "mois" ? 1 : 3 }, (_, i) => `${y}-${pad(m + i)}`);
 }
 
 export function buildForecast(input: ForecastInput): Forecast {
   const { today } = input;
-  const end = monthEnd(today);
-  const daysInMonth = Number(end.slice(8, 10));
-  const closedDays = Number(today.slice(8, 10)) - 1;
+  const scope = input.scope ?? "mois";
+  const { start, end } = periodBounds(today, scope);
+  const daysInMonth = eachDay({ from: start, to: end }).length;
+  const closedDays = eachDay({ from: start, to: today }).length - 1;
   const remaining = eachDay({ from: today, to: end });
 
   const realized = sumTotals(input.monthToDate);
@@ -109,7 +133,9 @@ export function buildForecast(input: ForecastInput): Forecast {
   const target = input.target && input.target > 0 ? input.target : null;
 
   return {
+    scope,
     month: today.slice(0, 7),
+    start,
     monthEnd: end,
     daysInMonth,
     closedDays,
@@ -138,20 +164,19 @@ export function buildForecast(input: ForecastInput): Forecast {
 }
 
 /** Bornes de dates nécessaires au calcul, pour la couche données. */
-export function forecastRanges(today: string) {
-  const end = monthEnd(today);
-  const [y, m] = today.split("-").map(Number);
-  const pm = m === 1 ? 12 : m - 1;
-  const py = m === 1 ? y - 1 : y;
-  const prevMonthEnd = `${py}-${String(pm).padStart(2, "0")}-${String(new Date(Date.UTC(py, pm, 0)).getUTCDate()).padStart(2, "0")}`;
-  const lyMonthStart = `${y - 1}-${today.slice(5, 7)}-01`;
-  const lyMonthEnd = `${y - 1}-${end.slice(5, 7)}-${String(new Date(Date.UTC(y - 1, m, 0)).getUTCDate()).padStart(2, "0")}`;
+export function forecastRanges(today: string, scope: ForecastScope = "mois") {
+  const { start, end } = periodBounds(today, scope);
+  const [y, m] = start.split("-").map(Number);
+  const span = scope === "mois" ? 1 : 3;
+  // Période précédente complète (mois ou trimestre)
+  const pm = m - span < 1 ? m - span + 12 : m - span;
+  const py = m - span < 1 ? y - 1 : y;
+  const prevEndMonth = pm + span - 1;
   return {
-    monthToDate: { from: `${today.slice(0, 7)}-01`, to: today },
+    monthToDate: { from: start, to: today },
     recent: { from: isoAddDays(today, -RECENT_DAYS), to: isoAddDays(today, -1) },
     lastYear: { from: isoAddDays(today, -RECENT_DAYS - YEAR_SHIFT_DAYS), to: isoAddDays(end, -YEAR_SHIFT_DAYS) },
-    previousMonth: { from: `${py}-${String(pm).padStart(2, "0")}-01`, to: prevMonthEnd },
-    lastYearMonth: { from: lyMonthStart, to: lyMonthEnd },
+    previousMonth: { from: `${py}-${pad(pm)}-01`, to: `${py}-${pad(prevEndMonth)}-${pad(lastDay(py, prevEndMonth))}` },
+    lastYearMonth: { from: `${y - 1}${start.slice(4)}`, to: `${y - 1}${end.slice(4, 8)}${pad(lastDay(y - 1, Number(end.slice(5, 7))))}` },
   };
 }
-

@@ -35,7 +35,7 @@ export default async function DashboardPage({ params, searchParams }: PageProps<
     getDashboard(workspace.id, periodKey),
     getSyncSummary(workspace.id),
     getToday(),
-    getForecast(workspace.id),
+    getForecast(workspace.id, periodKey === "trimestre" ? "trimestre" : "mois"),
   ]);
   const period = buildPeriod(periodKey, today);
   const legends: Record<PeriodKey, [string, string]> = {

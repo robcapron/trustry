@@ -117,17 +117,18 @@ export async function seedWorkspaceFromDemo(
     "pillar_scores",
     mine(ds.pillarScores).map((p) => ({ workspace_id: ws, score_date: p.date, pillar: p.pillar, score: p.score, headline: p.headline })),
   );
-  await supabase.from("alert_rules").upsert({ workspace_id: ws });
-  await insert(
-    "monthly_costs",
-    Object.entries(ds.opex)
-      .filter(([k]) => k.startsWith(`${source.id}:`))
-      .map(([k, v]) => ({
-        workspace_id: ws,
-        month: `${k.split(":")[1]}-01`,
-        opex_eur_cents: v,
-        revenue_target_eur_cents: ds.revenueTargets[k] ?? null,
-      })),
-  );
+  await supabase.from("alert_rules").upsert({ workspace_id: ws }, { onConflict: "workspace_id", ignoreDuplicates: true });
+  // Plan mensuel d'exemple : ne remplace jamais un mois déjà saisi (objectifs réels importés du Suivi prod)
+  const plan = Object.entries(ds.opex)
+    .filter(([k]) => k.startsWith(`${source.id}:`))
+    .map(([k, v]) => ({
+      workspace_id: ws,
+      month: `${k.split(":")[1]}-01`,
+      opex_eur_cents: v,
+      revenue_target_eur_cents: ds.revenueTargets[k] ?? null,
+    }));
+  const { error: planError } = await supabase.from("monthly_costs").upsert(plan, { onConflict: "workspace_id,month", ignoreDuplicates: true });
+  if (planError) throw new Error(`monthly_costs : ${planError.message}`);
+  total += plan.length;
   return { rows: total };
 }

@@ -128,6 +128,8 @@ test("forecast : atterrissage fin de mois et objectif modifiable", async ({ page
   await page.goto("/sdg-distribution/dashboard");
   await expect(page.getByRole("heading", { name: /^Atterrissage fin / })).toBeVisible();
   await expect(page.getByText(/fourchette/)).toBeVisible();
+  await page.goto("/sdg-distribution/dashboard?periode=trimestre");
+  await expect(page.getByRole("heading", { name: /^Atterrissage fin T\d \d{4}$/ })).toBeVisible();
   test.skip(info.project.name !== "desktop", "saisie testée sur desktop");
   await page.goto("/sdg-distribution/parametres/espace");
   await page.getByLabel("Objectif de CA HT du mois").fill("500 000");

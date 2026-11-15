@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildForecast, forecastRanges, monthEnd } from "@/domain/forecast";
+import { buildForecast, forecastRanges, monthEnd, periodBounds, periodMonths } from "@/domain/forecast";
 import { ZERO_TOTALS, type DailyRollup } from "@/domain/metrics";
 import { eachDay, isoAddDays } from "@/domain/period";
 
@@ -53,5 +53,25 @@ describe("prévision d'atterrissage", () => {
     expect(f.high - f.landing).toBe(4_000);
     expect(f.target).toBeNull();
     expect(f.requiredDaily).toBeNull();
+  });
+
+  it("trimestre : bornes, périodes de comparaison et projection jusqu'à fin décembre", () => {
+    expect(periodBounds(today, "trimestre")).toEqual({ start: "2026-10-01", end: "2026-12-31" });
+    expect(periodBounds("2027-02-03", "trimestre")).toEqual({ start: "2027-01-01", end: "2027-03-31" });
+    expect(periodMonths(today, "trimestre")).toEqual(["2026-10", "2026-11", "2026-12"]);
+    const r = forecastRanges(today, "trimestre");
+    expect(r.monthToDate).toEqual({ from: "2026-10-01", to: today });
+    expect(r.previousMonth).toEqual({ from: "2026-07-01", to: "2026-09-30" });
+    expect(r.lastYearMonth).toEqual({ from: "2025-10-01", to: "2025-12-31" });
+    expect(forecastRanges("2027-02-03", "trimestre").previousMonth).toEqual({ from: "2026-10-01", to: "2026-12-31" });
+
+    const qtd = series("2026-10-01", today, () => 1000);
+    const f = buildForecast({ today, scope: "trimestre", monthToDate: qtd, recent: qtd, lastYearDaily: [], previousMonthRevenue: null, lastYearMonthRevenue: null, target: 100_000 });
+    expect(f.scope).toBe("trimestre");
+    expect(f.daysInMonth).toBe(92);
+    expect(f.closedDays).toBe(45);
+    expect(f.remainingDays).toBe(47);
+    expect(f.landing).toBe(92_000);
+    expect(f.targetProgress).toBeCloseTo(92);
   });
 });
