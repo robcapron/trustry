@@ -8,6 +8,7 @@
  */
 import type { Role } from "@/domain/access";
 import type { AlertCategory, Severity } from "@/domain/alerts";
+import { MARKETPLACES } from "@/domain/marketplaces";
 import { hashString, mulberry32, stableUuid } from "./random";
 import type {
   Alert,
@@ -35,33 +36,7 @@ const USERS: DemoUser[] = [
   { id: stableUuid("user:lea"), email: "lea@demo.trustry.app", fullName: "Léa Morel" },
 ];
 
-export const MARKETPLACES: Record<MarketplaceCode, { name: string; api: string; countries: string[] }> = {
-  amazon_eu: { name: "Amazon UE", api: "SP-API + Ads API", countries: ["FR", "DE", "IT", "ES", "NL", "BE", "PL", "SE"] },
-  amazon_us: { name: "Amazon US", api: "SP-API + Ads API", countries: ["US"] },
-  amazon_jp_au: { name: "Amazon JP / AU", api: "SP-API", countries: ["JP", "AU"] },
-  decathlon: { name: "Décathlon", api: "API Mirakl", countries: ["FR", "DE", "ES", "IT", "BE"] },
-  kaufland: { name: "Kaufland", api: "API Kaufland", countries: ["DE", "CZ", "SK"] },
-  bol: { name: "Bol.com", api: "Retailer API", countries: ["NL", "BE"] },
-  cdiscount: { name: "Cdiscount", api: "API Octopia", countries: ["FR"] },
-  ebay: { name: "eBay", api: "OAuth eBay", countries: ["FR", "DE", "IT", "ES"] },
-  allegro: { name: "Allegro", api: "REST API", countries: ["PL"] },
-  tiktok_shop: { name: "TikTok Shop", api: "Partner API", countries: ["FR", "DE", "ES", "IT"] },
-  alltricks: { name: "Alltricks", api: "API Mirakl", countries: ["FR"] },
-};
-
-export const MARKETPLACE_ORDER: MarketplaceCode[] = [
-  "amazon_eu",
-  "amazon_us",
-  "amazon_jp_au",
-  "decathlon",
-  "kaufland",
-  "bol",
-  "cdiscount",
-  "ebay",
-  "allegro",
-  "tiktok_shop",
-  "alltricks",
-];
+export { MARKETPLACES, MARKETPLACE_ORDER } from "@/domain/marketplaces";
 
 const CURRENCY_BY_COUNTRY: Record<string, string> = {
   PL: "PLN",
@@ -108,6 +83,12 @@ const SDG_PRODUCTS: ProductSeed[] = [
   { sku: "ACTA-HLM-URB-GRY-M", brand: "ACTA", title: "Casque ACTA Urban Gris M", price: 49.9, weight: 4 },
   { sku: "ACTA-HLM-KID-BLU-S", brand: "ACTA", title: "Casque ACTA Kids Bleu S", price: 34.9, weight: 3 },
   { sku: "ACTA-LCK-U-180", brand: "ACTA", title: "Antivol ACTA U 180 mm", price: 39.9, weight: 3 },
+  { sku: "ACTA-HLM-ADV-BLK-S", brand: "ACTA", title: "Casque ACTA Advance Noir S", price: 74.9, weight: 2.5 },
+  { sku: "ACTA-HLM-ADV-BLK-XL", brand: "ACTA", title: "Casque ACTA Advance Noir XL", price: 74.9, weight: 1.5 },
+  { sku: "ACTA-HLM-ADV-WHT-L", brand: "ACTA", title: "Casque ACTA Advance Blanc L", price: 74.9, weight: 2 },
+  { sku: "ACTA-HLM-URB-GRY-L", brand: "ACTA", title: "Casque ACTA Urban Gris L", price: 49.9, weight: 2 },
+  { sku: "ACTA-HLM-URB-BLK-M", brand: "ACTA", title: "Casque ACTA Urban Noir M", price: 49.9, weight: 2.5 },
+  { sku: "ACTA-HLM-KID-PNK-S", brand: "ACTA", title: "Casque ACTA Kids Rose S", price: 34.9, weight: 2 },
   { sku: "SIXTEN-KNP-PRO-L", brand: "SIXTEN", title: "Genouillères SIXTEN Pro L", price: 44.9, weight: 8 },
   { sku: "SIXTEN-KNP-PRO-M", brand: "SIXTEN", title: "Genouillères SIXTEN Pro M", price: 44.9, weight: 6 },
   { sku: "SIXTEN-GLV-WIN-S", brand: "SIXTEN", title: "Gants SIXTEN Winter S", price: 29.9, weight: 5 },
@@ -481,35 +462,55 @@ function generateChannelMetrics(
     dailyCents.set(d, raw.get(d)! * scale);
   }
 
-  // 3) Ventilation par boutique et SKU, avec structure de coûts du canal
-  const costs = CHANNEL_COSTS[plan.marketplace];
-  const cogsPercent = Math.max(25, 100 - costs.commission - costs.ads - costs.logistics - costs.returns - plan.margin);
-
+  // 3) Ventilation par boutique et SKU
+  const rows: DailyMetric[] = [];
   for (const d of days) {
     const channelCents = dailyCents.get(d)!;
     if (channelCents <= 0) continue;
     for (const s of shares) {
+      // Ventes en unités entières : les jours sans vente n'ont pas de ligne
       const noise = 0.75 + rand() * 0.5;
-      const revenue = Math.round((channelCents * s.share * noise) / totalShare);
-      if (revenue <= 0) continue;
-      const units = Math.max(1, Math.round(revenue / s.product.priceHtCents));
-      const pct = (p: number) => Math.round((revenue * p) / 100);
-      ds.metrics.push({
+      const expectedUnits = (channelCents * s.share * noise) / totalShare / s.product.priceHtCents;
+      const units = Math.floor(expectedUnits) + (rand() < expectedUnits % 1 ? 1 : 0);
+      if (units <= 0) continue;
+      rows.push({
         workspaceId: wsId,
         date: d,
         storeId: s.store.id,
         productId: s.product.id,
         units,
-        orders: Math.max(1, Math.round(units * 0.92)),
-        revenueHt: revenue,
-        commissions: pct(costs.commission),
-        ads: pct(costs.ads),
-        logistics: pct(costs.logistics),
-        returns: pct(costs.returns),
-        cogs: pct(cogsPercent),
+        orders: Math.max(1, Math.round(units * 0.95)),
+        revenueHt: Math.round(units * s.product.priceHtCents * (0.93 + rand() * 0.07)),
+        commissions: 0,
+        ads: 0,
+        logistics: 0,
+        returns: 0,
+        cogs: 0,
       });
     }
   }
+
+  // Recalage exact sur les cibles (mois en cours et même période du mois précédent)
+  const rescale = (from: string, to: string, target: number) => {
+    const inRange = rows.filter((r) => r.date >= from && r.date <= to);
+    const actual = inRange.reduce((t, r) => t + r.revenueHt, 0);
+    if (actual > 0) for (const r of inRange) r.revenueHt = Math.round((r.revenueHt * target) / actual);
+  };
+  rescale(mtdStart, today, mtdTarget);
+  rescale(prevStart, prevEnd, prevTarget);
+
+  // Structure de coûts du canal
+  const costs = CHANNEL_COSTS[plan.marketplace];
+  const cogsPercent = Math.max(25, 100 - costs.commission - costs.ads - costs.logistics - costs.returns - plan.margin);
+  for (const r of rows) {
+    const pct = (p: number) => Math.round((r.revenueHt * p) / 100);
+    r.commissions = pct(costs.commission);
+    r.ads = pct(costs.ads);
+    r.logistics = pct(costs.logistics);
+    r.returns = pct(costs.returns);
+    r.cogs = pct(cogsPercent);
+  }
+  ds.metrics.push(...rows);
 }
 
 function monthDistance(fromIso: string, toIso: string): number {
@@ -527,6 +528,12 @@ function applyListingIncidents(ds: DemoDataset, seed: WorkspaceSeed, wsId: strin
   if (target === 0) return;
 
   const blocked: Listing[] = [];
+  const cutSales = (l: Listing, sinceDaysAgo: number) => {
+    const since = addDays(ds.today, -sinceDaysAgo);
+    for (const m of ds.metrics) {
+      if (m.storeId === l.storeId && m.productId === l.productId && m.date >= since) zeroMetric(m);
+    }
+  };
   if (seed.key === "sdg") {
     const actaDe = listings.filter((l) => {
       const s = storeById.get(l.storeId)!;
@@ -537,6 +544,7 @@ function applyListingIncidents(ds: DemoDataset, seed: WorkspaceSeed, wsId: strin
       l.status = "blocked";
       l.blockReason = "Informations GPSR manquantes";
       blocked.push(l);
+      cutSales(l, 4);
     }
     const ns = listings.find((l) => {
       const s = storeById.get(l.storeId)!;
@@ -546,6 +554,13 @@ function applyListingIncidents(ds: DemoDataset, seed: WorkspaceSeed, wsId: strin
       ns.status = "blocked";
       ns.blockReason = "Catégorie refusée par Décathlon";
       blocked.push(ns);
+      cutSales(ns, 8);
+    }
+    // Rupture : SIXTEN-GLV-WIN-S n'a plus de stock depuis 4 jours sur tous les canaux
+    const glv = ds.products.find((p) => p.workspaceId === wsId && p.sku === "SIXTEN-GLV-WIN-S");
+    if (glv) {
+      const since = addDays(ds.today, -3);
+      for (const m of ds.metrics) if (m.productId === glv.id && m.date >= since) zeroMetric(m);
     }
   }
   const reasons = ["Image principale non conforme", "EAN déjà associé à un autre produit", "Attribut obligatoire manquant", "Prix hors fourchette autorisée"];
@@ -556,7 +571,21 @@ function applyListingIncidents(ds: DemoDataset, seed: WorkspaceSeed, wsId: strin
     l.status = "blocked";
     l.blockReason = reasons[blocked.length % reasons.length];
     blocked.push(l);
+    cutSales(l, 2);
   }
+  // On retire les lignes vidées (aucune vente ce jour-là)
+  ds.metrics = ds.metrics.filter((m) => m.revenueHt > 0);
+}
+
+function zeroMetric(m: DailyMetric) {
+  m.units = 0;
+  m.orders = 0;
+  m.revenueHt = 0;
+  m.commissions = 0;
+  m.ads = 0;
+  m.logistics = 0;
+  m.returns = 0;
+  m.cogs = 0;
 }
 
 function alert(
@@ -593,6 +622,21 @@ function alert(
   };
 }
 
+function blockedSkus(ds: DemoDataset, wsId: string, marketplace: MarketplaceCode, country: string, brand: string): string[] {
+  const storeById = new Map(ds.stores.map((st) => [st.id, st]));
+  const productById = new Map(ds.products.map((p) => [p.id, p]));
+  // Ordre par poids commercial : la référence la plus vendue en premier
+  const weight = new Map(SDG_PRODUCTS.map((p) => [p.sku, p.weight]));
+  return ds.listings
+    .filter((l) => l.workspaceId === wsId && l.status === "blocked")
+    .filter((l) => {
+      const st = storeById.get(l.storeId)!;
+      return st.marketplace === marketplace && st.country === country && productById.get(l.productId)!.brand === brand;
+    })
+    .map((l) => productById.get(l.productId)!.sku)
+    .sort((a, b) => (weight.get(b) ?? 0) - (weight.get(a) ?? 0));
+}
+
 function buildAlerts(ds: DemoDataset, seed: WorkspaceSeed, wsId: string, now: Date) {
   const hoursAgo = (h: number) => new Date(now.getTime() - h * 3_600_000);
   if (seed.key === "sdg") {
@@ -603,7 +647,7 @@ function buildAlerts(ds: DemoDataset, seed: WorkspaceSeed, wsId: string, now: Da
         pillar: 4,
         title: "12 références ACTA bloquées sur Amazon DE",
         detail: "Intégration produits - Informations GPSR manquantes - 3 940 € HT de CA à risque par semaine",
-        subjects: ["ACTA-HLM-ADV-BLK-M", "ACTA-HLM-ADV-BLK-L", "ACTA-HLM-ADV-WHT-M", "ACTA-HLM-URB-GRY-M", "ACTA-HLM-KID-BLU-S", "ACTA-LCK-U-180"],
+        subjects: blockedSkus(ds, wsId, "amazon_eu", "DE", "ACTA"),
         risk: 3940,
         action: "Débloquer",
       }),

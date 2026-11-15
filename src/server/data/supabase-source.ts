@@ -1,7 +1,11 @@
 import "server-only";
 import type { Role } from "@/domain/access";
+import type { DashboardAlert } from "@/domain/dashboard";
+import type { MetricTotals, Rollups } from "@/domain/metrics";
+import type { DateRange } from "@/domain/period";
+import { parisToday } from "@/lib/dates";
 import { createSupabaseServerClient } from "../supabase/server";
-import type { Connection, ConnectionStatus, MarketplaceCode, Member, NavCounts, SessionUser, SyncSummary, WorkspaceSummary } from "../types";
+import type { Connection, ConnectionStatus, MarketplaceCode, Member, NavCounts, PillarScore, SessionUser, SyncSummary, WorkspaceSummary } from "../types";
 import { summarizeConnections } from "./summaries";
 
 export async function getCurrentUser(): Promise<SessionUser | null> {
@@ -124,4 +128,99 @@ export async function listMembers(workspaceId: string): Promise<Member[]> {
     role: m.role as Role,
     grantedModules: (m.granted_modules as string[]) ?? [],
   }));
+}
+
+export async function getToday(): Promise<string> {
+  return parisToday();
+}
+
+type TotalsRow = { revenue: number; commissions: number; ads: number; logistics: number; returns: number; cogs: number; units: number; orders: number };
+
+function totals(r: TotalsRow): MetricTotals {
+  return {
+    revenueHt: Number(r.revenue),
+    commissions: Number(r.commissions),
+    ads: Number(r.ads),
+    logistics: Number(r.logistics),
+    returns: Number(r.returns),
+    cogs: Number(r.cogs),
+    units: Number(r.units),
+    orders: Number(r.orders),
+  };
+}
+
+export async function getRollups(workspaceId: string, range: DateRange): Promise<Rollups> {
+  const supabase = await createSupabaseServerClient();
+  const args = { ws: workspaceId, date_from: range.from, date_to: range.to };
+  const [daily, channels, skus] = await Promise.all([
+    supabase.rpc("metrics_daily", args),
+    supabase.rpc("metrics_by_channel", args),
+    supabase.rpc("metrics_by_sku_store", args),
+  ]);
+  const error = daily.error ?? channels.error ?? skus.error;
+  if (error) throw new Error(`Agrégats indisponibles : ${error.message}`);
+  return {
+    daily: ((daily.data ?? []) as (TotalsRow & { metric_date: string })[]).map((r) => ({ ...totals(r), date: r.metric_date })),
+    channels: ((channels.data ?? []) as (TotalsRow & { marketplace: string })[]).map((r) => ({ ...totals(r), marketplace: r.marketplace })),
+    skus: ((skus.data ?? []) as (TotalsRow & { product_id: string; sku: string; title: string; store_id: string; marketplace: string; country: string })[]).map(
+      (r) => ({
+        ...totals(r),
+        productId: r.product_id,
+        sku: r.sku,
+        title: r.title,
+        storeId: r.store_id,
+        marketplace: r.marketplace,
+        country: r.country,
+      }),
+    ),
+  };
+}
+
+export async function listAlerts(workspaceId: string): Promise<DashboardAlert[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("alerts")
+    .select("id, severity, category, pillar, title, detail, scope, subjects, revenue_at_risk_eur_cents, suggested_action, status, created_at")
+    .eq("workspace_id", workspaceId)
+    .order("created_at", { ascending: false })
+    .limit(500);
+  if (error) throw new Error(`Lecture des alertes impossible : ${error.message}`);
+  return (data ?? []).map((a) => ({
+    id: a.id,
+    severity: a.severity,
+    category: a.category,
+    pillar: a.pillar,
+    title: a.title,
+    detail: a.detail,
+    scope: a.scope,
+    subjects: a.subjects ?? [],
+    revenueAtRiskCents: Number(a.revenue_at_risk_eur_cents),
+    suggestedAction: a.suggested_action,
+    status: a.status,
+    createdAt: a.created_at,
+  }));
+}
+
+export async function listPillarScores(workspaceId: string): Promise<PillarScore[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data: latest } = await supabase
+    .from("pillar_scores")
+    .select("score_date")
+    .eq("workspace_id", workspaceId)
+    .order("score_date", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!latest) return [];
+  const { data } = await supabase
+    .from("pillar_scores")
+    .select("pillar, score, headline, score_date")
+    .eq("workspace_id", workspaceId)
+    .eq("score_date", latest.score_date);
+  return (data ?? []).map((p) => ({ workspaceId, date: p.score_date, pillar: p.pillar, score: p.score, headline: p.headline }));
+}
+
+export async function listBlockedListingKeys(workspaceId: string): Promise<string[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data } = await supabase.from("listings").select("store_id, product_id").eq("workspace_id", workspaceId).eq("status", "blocked");
+  return (data ?? []).map((l) => `${l.store_id}:${l.product_id}`);
 }

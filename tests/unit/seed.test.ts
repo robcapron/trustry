@@ -20,8 +20,9 @@ describe("données d'exemple", () => {
     const rows = ds.metrics.filter((m) => m.workspaceId === sdg.id && m.date >= "2026-11-01");
     const revenue = rows.reduce((s, m) => s + m.revenueHt, 0);
     const profit = rows.reduce((s, m) => s + m.revenueHt - m.commissions - m.ads - m.logistics - m.returns - m.cogs, 0);
-    expect(revenue / 100).toBeGreaterThan(140_000);
-    expect(revenue / 100).toBeLessThan(145_000);
+    // Calibré sur 142 380 € avant incidents (références bloquées, rupture)
+    expect(revenue / 100).toBeGreaterThan(132_000);
+    expect(revenue / 100).toBeLessThan(143_000);
     expect((profit / revenue) * 100).toBeGreaterThan(20.5);
     expect((profit / revenue) * 100).toBeLessThan(22.5);
   });

@@ -2,7 +2,11 @@ import "server-only";
 import { connection } from "next/server";
 import { DEMO_USER, MARKETPLACE_ORDER } from "../demo/seed";
 import { getDemoDataset } from "../demo/store";
-import type { Connection, Member, NavCounts, SessionUser, SyncSummary, WorkspaceSummary } from "../types";
+import type { DashboardAlert } from "@/domain/dashboard";
+import type { Rollups } from "@/domain/metrics";
+import type { DateRange } from "@/domain/period";
+import type { Connection, Member, NavCounts, PillarScore, SessionUser, SyncSummary, WorkspaceSummary } from "../types";
+import { rollupInMemory } from "./rollups";
 import { summarizeConnections } from "./summaries";
 
 export async function getCurrentUser(): Promise<SessionUser> {
@@ -58,4 +62,32 @@ export async function listMembers(workspaceId: string): Promise<Member[]> {
       const u = ds.users.find((x) => x.id === m.userId)!;
       return { userId: u.id, fullName: u.fullName, email: u.email, role: m.role, grantedModules: m.grantedModules };
     });
+}
+
+export async function getToday(): Promise<string> {
+  return getDemoDataset().today;
+}
+
+export async function getRollups(workspaceId: string, range: DateRange): Promise<Rollups> {
+  const ds = getDemoDataset();
+  return rollupInMemory(
+    ds.metrics.filter((m) => m.workspaceId === workspaceId),
+    ds.stores.filter((s) => s.workspaceId === workspaceId),
+    ds.products.filter((p) => p.workspaceId === workspaceId),
+    range,
+  );
+}
+
+export async function listAlerts(workspaceId: string): Promise<DashboardAlert[]> {
+  return getDemoDataset().alerts.filter((a) => a.workspaceId === workspaceId);
+}
+
+export async function listPillarScores(workspaceId: string): Promise<PillarScore[]> {
+  return getDemoDataset().pillarScores.filter((p) => p.workspaceId === workspaceId);
+}
+
+export async function listBlockedListingKeys(workspaceId: string): Promise<string[]> {
+  return getDemoDataset()
+    .listings.filter((l) => l.workspaceId === workspaceId && l.status === "blocked")
+    .map((l) => `${l.storeId}:${l.productId}`);
 }

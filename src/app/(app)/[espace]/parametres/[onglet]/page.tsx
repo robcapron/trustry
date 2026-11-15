@@ -10,7 +10,7 @@ import { UpcomingScreen } from "@/components/screens/upcoming";
 import { canManageMembers, canUseModule, MODULE_LABEL, ROLE_LABEL } from "@/domain/access";
 import { isDemoMode } from "@/lib/env";
 import { formatNumber, formatRelative } from "@/lib/format";
-import { MARKETPLACES } from "@/server/demo/seed";
+import { MARKETPLACES } from "@/domain/marketplaces";
 import { getSyncSummary, getWorkspace, listConnections, listMembers } from "@/server/data";
 import type { ConnectionStatus } from "@/server/types";
 

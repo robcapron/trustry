@@ -44,6 +44,8 @@ Porteur : Robin Capron (SDG Distribution). Interface 100 % en français.
 - `src/server/data/` : seule porte d'accès aux données pour les pages (Data Access Layer). Deux sources : Supabase (session utilisateur, RLS) et démo (`src/server/demo/`).
 - Mode démo : actif sans variables Supabase ou avec `TRUSTRY_DEMO=1`. Données déterministes (`src/server/demo/seed.ts`), mois en cours de SDG calibré sur la maquette.
 - `src/components/trustry/` : design system. `src/components/layout/` : navigation desktop et mobile.
+- Agrégats : fonctions SQL `metrics_daily`, `metrics_by_channel`, `metrics_by_sku_store` (security invoker, RLS de l'appelant) ; même forme en mémoire pour la démo (`src/server/data/rollups.ts`). Le Dashboard est calculé par `buildDashboard` (`src/domain/dashboard.ts`).
+- Périodes : `?periode=7j|mois|trimestre`, comparées à la période précédente équivalente (`src/domain/period.ts`).
 - Connecteurs (Phase 3) : interface commune `MarketplaceAdapter` (orders, listings, inventory, prices, ads, finances, returns, messages), une implémentation par marketplace, `MockAdapter` d'abord.
 
 ## Design system (DA Trustry, direction "Combo A+B")
@@ -79,7 +81,7 @@ pnpm typecheck && pnpm lint && pnpm build
 | Phase | Contenu | Statut |
 |---|---|---|
 | 0 | Repo, design system, layout et navigation (desktop + iPhone), auth, multi-tenant + RLS, données d'exemple, Import OMS intégré | Fait |
-| 1 | Dashboard global + sélecteur d'espace (données mock) | A faire |
+| 1 | Dashboard global + sélecteur d'espace (données mock) | Fait |
 | 2 | P&L détaillé + Centre d'alertes + notifications push, gestion des membres et accès | A faire |
 | 3 | Connecteurs : écran, MockAdapter, Amazon SP-API, sources Odoo (coûts d'achat), Google Drive (coûts transport), BCE | A faire |
 | 4 | Serveur MCP (lecture, actions avec validation, 3 niveaux de permission) | A faire |

@@ -9,3 +9,8 @@ export function dashboardEyebrow(now: Date = new Date()): string {
   const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
   return `${formatLongDate(now)} - ${MONTHS[m - 1]} à J${d}/${daysInMonth}`;
 }
+
+/** Date du jour à Paris, au format YYYY-MM-DD. */
+export function parisToday(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris" }).format(now);
+}

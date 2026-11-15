@@ -89,6 +89,33 @@ suite("RLS multi-tenant", () => {
     );
   });
 
+  async function seedMetrics(ws: string, suffix: string) {
+    const conn = await db.query("insert into connections (workspace_id, marketplace_code, status) values ($1, 'decathlon', 'connected') returning id", [ws]);
+    const store = await db.query("insert into stores (workspace_id, connection_id, country, currency) values ($1, $2, 'FR', 'EUR') returning id", [ws, conn.rows[0].id]);
+    const product = await db.query("insert into products (workspace_id, sku, title) values ($1, $2, 'Produit') returning id", [ws, `SKU-${suffix}`]);
+    await db.query(
+      `insert into daily_sku_metrics (workspace_id, metric_date, store_id, product_id, units, orders_count, revenue_ht_eur_cents, commissions_eur_cents, cogs_eur_cents)
+       values ($1, '2026-11-10', $2, $3, 2, 2, 10000, 1500, 4000)`,
+      [ws, store.rows[0].id, product.rows[0].id],
+    );
+  }
+
+  it("les agrégats SQL respectent la RLS de l'appelant", async () => {
+    await seedMetrics(WS_SDG, "SDG");
+    await seedMetrics(WS_OTHER, "OTHER");
+    const own = await asUser(U.lea, (c) => c.query("select * from metrics_daily($1, '2026-11-01', '2026-11-15')", [WS_SDG]));
+    expect(own.rows).toHaveLength(1);
+    expect(Number(own.rows[0].revenue)).toBe(10000);
+    const channel = await asUser(U.lea, (c) => c.query("select * from metrics_by_channel($1, '2026-11-01', '2026-11-15')", [WS_SDG]));
+    expect(channel.rows[0].marketplace).toBe("decathlon");
+    const sku = await asUser(U.lea, (c) => c.query("select * from metrics_by_sku_store($1, '2026-11-01', '2026-11-15')", [WS_SDG]));
+    expect(sku.rows[0].sku).toBe("SKU-SDG");
+    const other = await asUser(U.lea, (c) => c.query("select * from metrics_daily($1, '2026-11-01', '2026-11-15')", [WS_OTHER]));
+    expect(other.rows).toHaveLength(0);
+    const net = await db.query("select net_profit_eur_cents from daily_sku_metrics where workspace_id = $1", [WS_SDG]);
+    expect(Number(net.rows[0].net_profit_eur_cents)).toBe(4500);
+  });
+
   afterAll(async () => {
     await db?.end();
   });

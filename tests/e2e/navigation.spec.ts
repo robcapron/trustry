@@ -6,6 +6,20 @@ test("l'accueil ouvre le Dashboard du premier espace", async ({ page }) => {
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Bonjour Robin.");
 });
 
+test("le Dashboard affiche KPI, canaux, alertes, piliers et SKU", async ({ page }) => {
+  await page.goto("/sdg-distribution/dashboard");
+  await expect(page.getByText("Profit net du mois")).toBeVisible();
+  await expect(page.getByText(/^vs \d/).first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Par canal" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "À traiter en priorité" })).toBeVisible();
+  await expect(page.getByText("12 références ACTA bloquées sur Amazon DE")).toBeVisible();
+  await expect(page.getByText("Score global")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Flop 5 SKU" })).toBeVisible();
+  await page.getByRole("link", { name: "7 jours" }).click();
+  await expect(page).toHaveURL(/periode=7j/);
+  await expect(page.getByText("Profit net sur 7 jours")).toBeVisible();
+});
+
 test("le changement d'espace garde la même page", async ({ page, isMobile }) => {
   await page.goto("/sdg-distribution/alertes");
   await page.getByRole("button", { name: /Espace client/ }).first().click();
