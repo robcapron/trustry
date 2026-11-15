@@ -30,6 +30,7 @@ Porteur : Robin Capron (SDG Distribution). Interface 100 % en français.
 - Modules optionnels (`workspaces.enabled_modules`) accordés membre par membre (`workspace_members.granted_modules`). Owner/admin y ont accès d'office.
 - **Import OMS** : outil HTML existant de SDG, intégré **tel quel** (`src/modules/import-oms/`), servi par une route protégée (jamais dans `public/`). Activé uniquement sur l'espace SDG. Ne pas modifier le HTML sans demande explicite.
 - Invitations : lien à usage unique (jeton haché sha256 en base), `accept_invitation` et `invitation_preview` sont security definer volontairement (protégés par le jeton et l'email) : l'avertissement de l'advisor Supabase est attendu.
+- Identifiants marketplaces : `save_connection_credentials` (security definer, owner/admin, écriture seule dans Vault : avertissement advisor attendu) ; lecture déchiffrée `connection_credentials` réservée au rôle service (jobs).
 - Toute nouvelle table métier : ajouter `workspace_id`, l'ajouter à la boucle RLS ou écrire ses policies, et un test dans `tests/db/rls.test.ts`.
 
 ## Stack
@@ -50,7 +51,9 @@ Porteur : Robin Capron (SDG Distribution). Interface 100 % en français.
 - `src/components/trustry/` : design system. `src/components/layout/` : navigation desktop et mobile.
 - Agrégats : fonctions SQL `metrics_daily`, `metrics_by_channel`, `metrics_by_sku_store` (security invoker, RLS de l'appelant) ; même forme en mémoire pour la démo (`src/server/data/rollups.ts`). Le Dashboard est calculé par `buildDashboard` (`src/domain/dashboard.ts`).
 - Périodes : `?periode=7j|mois|trimestre`, comparées à la période précédente équivalente (`src/domain/period.ts`).
-- Connecteurs (Phase 3) : interface commune `MarketplaceAdapter` (orders, listings, inventory, prices, ads, finances, returns, messages), une implémentation par marketplace, `MockAdapter` d'abord.
+- Connecteurs : interface `MarketplaceAdapter` (`src/server/connectors/types.ts`), données normalisées et calcul des métriques dans `src/domain/sync-metrics.ts` (commissions, pub, logistique au SKU sinon au prorata du CA ; retours ; coût d'achat ; taux BCE). `MockAdapter` = "Données de test" (`connections.adapter = 'mock'`). Sans connecteur natif, la connexion passe "Via Claude (MCP)".
+- Jobs Inngest (`src/inngest/`, route `/api/inngest`) : planificateur 15 min, synchro par connexion (une à la fois), moteur d'alertes (après synchro + toutes les heures), taux BCE (jours ouvrés 16 h 30). Client service `src/server/supabase/admin.ts` (`SUPABASE_SECRET_KEY`), jamais pour une requête utilisateur.
+- Moteur d'alertes `src/domain/alert-engine.ts` : blocages (critique, groupés par boutique et motif), ruptures / couverture < `stock_cover_days`, chutes de ventes (SKU qui expliquent >= 60 % de la baisse, 5 max, sinon `scope = 'account'`), TACoS > cible + 10 %, accès qui expire / erreur / retard. Clés de dédoublonnage stables ; résolution automatique quand la cause disparaît.
 
 ## Design system (DA Trustry, direction "Combo A+B")
 
@@ -87,6 +90,6 @@ pnpm typecheck && pnpm lint && pnpm build
 | 0 | Repo, design system, layout et navigation (desktop + iPhone), auth, multi-tenant + RLS, données d'exemple, Import OMS intégré | Fait |
 | 1 | Dashboard global + sélecteur d'espace (données mock) | Fait |
 | 2 | P&L détaillé (canal > pays > SKU, filtres, export CSV) + Centre d'alertes + gestion des membres, accès et invitations | Fait |
-| 3 | Revue mensuelle par pôle + prévision d'atterrissage (fait). Connecteurs : écran, MockAdapter, synchro via Claude (MCP) et API, Odoo (coûts d'achat), Google Drive (coûts transport), BCE, moteur d'alertes (Inngest) + notifications push | En cours |
+| 3 | Revue mensuelle par pôle, prévision d'atterrissage, écran Connecteurs (maquette), interface connecteurs + MockAdapter, calcul du profit réel depuis les données brutes, moteur d'alertes, jobs Inngest, taux BCE, identifiants dans Vault. Reste : connecteurs natifs (Mirakl d'abord), imports Odoo / Drive, notifications push | Fait (socle) |
 | 4 | Serveur MCP (lecture, actions avec validation, 3 niveaux de permission) | A faire |
 | 5 | Les 7 modules piliers | A faire |

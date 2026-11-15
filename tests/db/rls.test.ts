@@ -246,6 +246,22 @@ suite("RLS multi-tenant", () => {
     expect(ok.rowCount).toBe(1);
   });
 
+  it("identifiants des connecteurs : écriture owner/admin dans Vault, lecture réservée au rôle service", async () => {
+    const conn = await db.query("insert into connections (workspace_id, marketplace_code) values ($1, 'alltricks') returning id", [WS_SDG]);
+    const id = conn.rows[0].id;
+    await expect(asUser(U.camille, (c) => c.query("select save_connection_credentials($1, '{\"api_key\":\"x\"}')", [id]))).rejects.toThrow();
+    await expect(asUser(U.intrus, (c) => c.query("select save_connection_credentials($1, '{\"api_key\":\"x\"}')", [id]))).rejects.toThrow();
+    await db.query("begin");
+    await db.query("set local role authenticated");
+    await db.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ sub: U.robin, role: "authenticated" })]);
+    await db.query("select save_connection_credentials($1, '{\"api_key\":\"secret-1\"}')", [id]);
+    const row = await db.query("select status, credentials_secret_id from connections where id = $1", [id]);
+    expect(row.rows[0].status).toBe("syncing");
+    expect(row.rows[0].credentials_secret_id).not.toBeNull();
+    await expect(db.query("select connection_credentials($1)", [id])).rejects.toThrow();
+    await db.query("rollback");
+  });
+
   it("un utilisateur anonyme ne voit rien", async () => {
     await db.query("begin");
     try {

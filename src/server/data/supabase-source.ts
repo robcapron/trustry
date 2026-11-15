@@ -8,7 +8,23 @@ import type { DailyRollup } from "@/domain/metrics";
 import { DEFAULT_TARGETS, type MonthlyRow, type PoleTargets } from "@/domain/monthly-review";
 import { parisToday } from "@/lib/dates";
 import { createSupabaseServerClient } from "../supabase/server";
-import type { Connection, ConnectionStatus, Invitation, MarketplaceCode, Member, NavCounts, PillarScore, SessionUser, SyncSummary, WorkspaceSummary } from "../types";
+import { MARKETPLACE_ORDER } from "@/domain/marketplaces";
+import type {
+  ConnectInput,
+  Connection,
+  ConnectionStatus,
+  ConnectorsOverview,
+  Invitation,
+  MarketplaceCode,
+  McpPermission,
+  Member,
+  NavCounts,
+  PillarScore,
+  SessionUser,
+  SyncRun,
+  SyncSummary,
+  WorkspaceSummary,
+} from "../types";
 import { summarizeConnections } from "./summaries";
 
 export async function getCurrentUser(): Promise<SessionUser | null> {
@@ -89,13 +105,13 @@ export async function listConnections(workspaceId: string): Promise<Connection[]
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("connections")
-    .select("id, workspace_id, marketplace_code, status, method, last_sync_at, token_expires_at, sync_progress, last_error, sync_frequency_minutes, marketplaces(sort_order)")
+    .select("id, workspace_id, marketplace_code, status, method, adapter, last_sync_at, token_expires_at, sync_progress, last_error, sync_frequency_minutes, marketplaces(sort_order)")
     .eq("workspace_id", workspaceId);
   if (error) throw new Error(`Lecture des connecteurs impossible : ${error.message}`);
   type Row = {
     id: string; workspace_id: string; marketplace_code: string; status: ConnectionStatus; method: "api" | "mcp";
     last_sync_at: string | null; token_expires_at: string | null; sync_progress: number | null; last_error: string | null;
-    sync_frequency_minutes: 15 | 60 | 1440; marketplaces: { sort_order: number } | null;
+    sync_frequency_minutes: 15 | 60 | 1440; adapter: string; marketplaces: { sort_order: number } | null;
   };
   return ((data ?? []) as unknown as Row[])
     .sort((a, b) => (a.marketplaces?.sort_order ?? 99) - (b.marketplaces?.sort_order ?? 99))
@@ -110,6 +126,7 @@ export async function listConnections(workspaceId: string): Promise<Connection[]
       syncProgress: r.sync_progress,
       lastError: r.last_error,
       syncFrequencyMinutes: r.sync_frequency_minutes,
+      adapter: r.adapter,
     }));
 }
 
@@ -380,4 +397,112 @@ export async function setMonthlyPlan(workspaceId: string, month: string, plan: {
     opex_eur_cents: plan.opex,
   });
   if (error) throw new Error(`Enregistrement impossible : ${error.message}`);
+}
+
+// Connecteurs ---------------------------------------------------------------------
+
+export async function getConnectorsOverview(workspaceId: string): Promise<ConnectorsOverview> {
+  const supabase = await createSupabaseServerClient();
+  const [connections, ws, key, runs] = await Promise.all([
+    listConnections(workspaceId),
+    supabase.from("workspaces").select("mcp_permission").eq("id", workspaceId).maybeSingle(),
+    supabase
+      .from("api_keys")
+      .select("prefix, created_at, created_by")
+      .eq("workspace_id", workspaceId)
+      .is("revoked_at", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("sync_runs")
+      .select("id, job, status, started_at, finished_at, rows_upserted, error, connections(marketplace_code)")
+      .eq("workspace_id", workspaceId)
+      .order("started_at", { ascending: false })
+      .limit(30),
+  ]);
+  type KeyRow = { prefix: string; created_at: string; created_by: string | null };
+  type RunRow = { id: string; job: string; status: SyncRun["status"]; started_at: string; finished_at: string | null; rows_upserted: number; error: string | null; connections: { marketplace_code: string } | null };
+  const k = key.data as unknown as KeyRow | null;
+  const author = k?.created_by ? (await supabase.from("profiles").select("full_name").eq("id", k.created_by).maybeSingle()).data : null;
+  return {
+    rows: MARKETPLACE_ORDER.map((m) => ({ marketplace: m, connection: connections.find((c) => c.marketplace === m) ?? null })),
+    apiKey: k ? { prefix: k.prefix, createdAt: k.created_at, createdBy: (author?.full_name as string | undefined) ?? null } : null,
+    mcpPermission: (ws.data?.mcp_permission as McpPermission) ?? "read",
+    mcpUsers: 0,
+    frequency: connections[0]?.syncFrequencyMinutes ?? 15,
+    runs: ((runs.data ?? []) as unknown as RunRow[]).map((r) => ({
+      id: r.id,
+      marketplace: (r.connections?.marketplace_code ?? "amazon_eu") as MarketplaceCode,
+      job: r.job,
+      status: r.status,
+      startedAt: r.started_at,
+      finishedAt: r.finished_at,
+      rows: r.rows_upserted,
+      error: r.error,
+    })),
+  };
+}
+
+export async function setMcpPermission(workspaceId: string, level: McpPermission) {
+  const supabase = await createSupabaseServerClient();
+  await mustAffect(supabase.from("workspaces").update({ mcp_permission: level }).eq("id", workspaceId).select("id"), "Changement du niveau MCP");
+}
+
+export async function setSyncFrequency(workspaceId: string, minutes: 15 | 60 | 1440) {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.from("connections").update({ sync_frequency_minutes: minutes }).eq("workspace_id", workspaceId);
+  if (error) throw new Error(error.message);
+}
+
+/** Crée une clé API (montrée une seule fois) ; seule son empreinte sha256 est stockée. Révoque la précédente. */
+export async function createApiKey(workspaceId: string, createdBy: string): Promise<{ key: string; prefix: string }> {
+  const supabase = await createSupabaseServerClient();
+  const key = `trs_live_${randomBytes(24).toString("base64url")}`;
+  const prefix = `trs_live_${key.slice(-4)}`;
+  const hash = createHash("sha256").update(key).digest("hex");
+  await supabase.from("api_keys").update({ revoked_at: new Date().toISOString() }).eq("workspace_id", workspaceId).is("revoked_at", null);
+  const { error } = await supabase.from("api_keys").insert({ workspace_id: workspaceId, name: "Clé API Trustry", prefix, key_hash: hash, created_by: createdBy });
+  if (error) throw new Error(`Création de la clé impossible : ${error.message}`);
+  return { key, prefix };
+}
+
+export async function connectMarketplace(workspaceId: string, input: ConnectInput): Promise<{ connectionId: string; adapter: string }> {
+  const supabase = await createSupabaseServerClient();
+  const adapter = input.method === "test" ? "mock" : "native";
+  const { data, error } = await supabase
+    .from("connections")
+    .upsert(
+      {
+        workspace_id: workspaceId,
+        marketplace_code: input.marketplace,
+        method: input.method === "mcp" ? "mcp" : "api",
+        adapter,
+        data_scopes: input.scopes,
+        status: input.method === "mcp" ? "connected" : "syncing",
+        last_error: null,
+      },
+      { onConflict: "workspace_id,marketplace_code" },
+    )
+    .select("id")
+    .single();
+  if (error || !data) throw new Error(`Connexion impossible : ${error?.message ?? "droits insuffisants"}`);
+  if (input.method === "api" && input.credentials) {
+    const { error: e } = await supabase.rpc("save_connection_credentials", { target: data.id, secret: JSON.stringify(input.credentials) });
+    if (e) throw new Error(`Enregistrement des identifiants impossible : ${e.message}`);
+  }
+  return { connectionId: data.id, adapter };
+}
+
+export async function disconnectMarketplace(workspaceId: string, connectionId: string) {
+  const supabase = await createSupabaseServerClient();
+  await mustAffect(
+    supabase
+      .from("connections")
+      .update({ status: "not_connected", sync_progress: null, last_error: null, token_expires_at: null })
+      .eq("workspace_id", workspaceId)
+      .eq("id", connectionId)
+      .select("id"),
+    "Déconnexion",
+  );
 }

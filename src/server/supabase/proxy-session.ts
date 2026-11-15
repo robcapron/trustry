@@ -2,7 +2,8 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "@/lib/env";
 
-const PUBLIC_PATHS = ["/connexion", "/auth", "/invitation", "/manifest.webmanifest"];
+// /api/inngest et /api/mcp ont leur propre authentification (signature Inngest, jeton OAuth)
+const PUBLIC_PATHS = ["/connexion", "/auth", "/invitation", "/manifest.webmanifest", "/api/inngest", "/api/mcp", "/.well-known"];
 
 /** Rafraîchit la session Supabase et redirige vers /connexion si besoin (vérification optimiste). */
 export async function updateSession(request: NextRequest) {

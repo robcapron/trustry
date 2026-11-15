@@ -164,3 +164,15 @@ export async function saveMonthlyPlan(
   await src.setMonthlyPlan(workspaceId, month, plan);
   await src.setPoleTargets(workspaceId, targets);
 }
+
+// Connecteurs ---------------------------------------------------------------------
+
+export const getConnectorsOverview = cache(async (workspaceId: string) => source().getConnectorsOverview(workspaceId));
+
+export const connectors = {
+  setMcpPermission: (ws: string, level: import("../types").McpPermission) => source().setMcpPermission(ws, level),
+  setSyncFrequency: (ws: string, minutes: 15 | 60 | 1440) => source().setSyncFrequency(ws, minutes),
+  createApiKey: (ws: string, userId: string) => source().createApiKey(ws, userId),
+  connect: (ws: string, input: import("../types").ConnectInput) => source().connectMarketplace(ws, input),
+  disconnect: (ws: string, connectionId: string) => source().disconnectMarketplace(ws, connectionId),
+};

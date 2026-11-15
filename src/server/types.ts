@@ -61,6 +61,8 @@ export type Connection = {
   syncProgress: number | null;
   lastError: string | null;
   syncFrequencyMinutes: 15 | 60 | 1440;
+  /** "mock" pour la connexion de test */
+  adapter?: string;
 };
 
 export type Store = {
@@ -147,4 +149,34 @@ export type Invitation = {
   role: Role;
   grantedModules: string[];
   expiresAt: string;
+};
+
+export type McpPermission = "read" | "actions_with_approval" | "actions_auto";
+
+export type SyncRun = {
+  id: string;
+  marketplace: MarketplaceCode;
+  job: string;
+  status: "running" | "success" | "error" | "rate_limited";
+  startedAt: string;
+  finishedAt: string | null;
+  rows: number;
+  error: string | null;
+};
+
+export type ConnectorsOverview = {
+  /** une ligne par marketplace gérée, connectée ou non */
+  rows: { marketplace: MarketplaceCode; connection: Connection | null }[];
+  apiKey: { prefix: string; createdAt: string; createdBy: string | null } | null;
+  mcpPermission: McpPermission;
+  mcpUsers: number;
+  frequency: 15 | 60 | 1440;
+  runs: SyncRun[];
+};
+
+export type ConnectInput = {
+  marketplace: MarketplaceCode;
+  method: "api" | "mcp" | "test";
+  credentials: Record<string, string> | null;
+  scopes: string[];
 };

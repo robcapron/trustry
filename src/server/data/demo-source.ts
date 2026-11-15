@@ -2,12 +2,26 @@ import "server-only";
 import { connection } from "next/server";
 import { DEMO_USER, MARKETPLACE_ORDER } from "../demo/seed";
 import { getDemoDataset } from "../demo/store";
+import { randomBytes } from "node:crypto";
 import type { DashboardAlert } from "@/domain/dashboard";
 import { ZERO_TOTALS, type DailyRollup, type Rollups } from "@/domain/metrics";
 import { DEFAULT_TARGETS, type MonthlyRow, type PoleTargets } from "@/domain/monthly-review";
 import type { DateRange } from "@/domain/period";
 import type { Role } from "@/domain/access";
-import type { Connection, Invitation, Member, NavCounts, PillarScore, SessionUser, SyncSummary, WorkspaceSummary } from "../types";
+import type {
+  ConnectInput,
+  Connection,
+  ConnectorsOverview,
+  Invitation,
+  McpPermission,
+  Member,
+  NavCounts,
+  PillarScore,
+  SessionUser,
+  SyncRun,
+  SyncSummary,
+  WorkspaceSummary,
+} from "../types";
 import { rollupInMemory } from "./rollups";
 import { summarizeConnections } from "./summaries";
 
@@ -204,4 +218,70 @@ export async function getDaily(workspaceId: string, range: DateRange): Promise<D
 
 export async function getRevenueTarget(workspaceId: string, month: string): Promise<number | null> {
   return getDemoDataset().revenueTargets[`${workspaceId}:${month}`] ?? null;
+}
+
+// Connecteurs (démo : état en mémoire) ---------------------------------------------
+
+const demoMcp = new Map<string, McpPermission>();
+const demoKeys = new Map<string, { prefix: string; createdAt: string; createdBy: string }>();
+
+export async function getConnectorsOverview(workspaceId: string): Promise<ConnectorsOverview> {
+  const ds = getDemoDataset();
+  const conns = ds.connections.filter((c) => c.workspaceId === workspaceId);
+  const runs: SyncRun[] = conns
+    .filter((c) => c.lastSyncAt)
+    .map((c): SyncRun => ({
+      id: `run-${c.id}`,
+      marketplace: c.marketplace,
+      job: "full",
+      status: c.status === "error" ? "error" : c.status === "syncing" ? "running" : "success",
+      startedAt: c.lastSyncAt!,
+      finishedAt: c.status === "syncing" ? null : c.lastSyncAt,
+      rows: c.status === "error" ? 0 : 1_200,
+      error: c.lastError,
+    }))
+    .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+  return {
+    rows: MARKETPLACE_ORDER.map((m) => ({ marketplace: m, connection: conns.find((c) => c.marketplace === m) ?? null })),
+    apiKey: demoKeys.get(workspaceId) ?? { prefix: "trs_live_4f2a", createdAt: "2026-11-03T10:00:00Z", createdBy: "Robin Capron" },
+    mcpPermission: demoMcp.get(workspaceId) ?? "actions_with_approval",
+    mcpUsers: 2,
+    frequency: conns[0]?.syncFrequencyMinutes ?? 15,
+    runs,
+  };
+}
+
+export async function setMcpPermission(workspaceId: string, level: McpPermission) {
+  demoMcp.set(workspaceId, level);
+}
+
+export async function setSyncFrequency(workspaceId: string, minutes: 15 | 60 | 1440) {
+  for (const c of getDemoDataset().connections) if (c.workspaceId === workspaceId) c.syncFrequencyMinutes = minutes;
+}
+
+export async function createApiKey(workspaceId: string, createdBy: string): Promise<{ key: string; prefix: string }> {
+  const key = `trs_live_${randomBytes(24).toString("base64url")}`;
+  const prefix = `trs_live_${key.slice(-4)}`;
+  demoKeys.set(workspaceId, { prefix, createdAt: new Date().toISOString(), createdBy });
+  return { key, prefix };
+}
+
+export async function connectMarketplace(workspaceId: string, input: ConnectInput): Promise<{ connectionId: string; adapter: string }> {
+  const ds = getDemoDataset();
+  let c = ds.connections.find((x) => x.workspaceId === workspaceId && x.marketplace === input.marketplace);
+  if (!c) {
+    c = { id: `demo-${input.marketplace}`, workspaceId, marketplace: input.marketplace, status: "not_connected", method: "api", lastSyncAt: null, tokenExpiresAt: null, syncProgress: null, lastError: null, syncFrequencyMinutes: 15 };
+    ds.connections.push(c);
+  }
+  c.method = input.method === "mcp" ? "mcp" : "api";
+  c.status = input.method === "mcp" ? "connected" : "syncing";
+  c.syncProgress = input.method === "mcp" ? null : 0;
+  c.lastError = null;
+  c.tokenExpiresAt = null;
+  return { connectionId: c.id, adapter: input.method === "test" ? "mock" : "native" };
+}
+
+export async function disconnectMarketplace(workspaceId: string, connectionId: string) {
+  const c = getDemoDataset().connections.find((x) => x.workspaceId === workspaceId && x.id === connectionId);
+  if (c) Object.assign(c, { status: "not_connected", syncProgress: null, lastError: null, tokenExpiresAt: null });
 }

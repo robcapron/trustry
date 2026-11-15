@@ -1,22 +1,24 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { StatusBadge, type Tone } from "@/components/trustry/badge";
+import { StatusBadge } from "@/components/trustry/badge";
 import { Card, CardHeader } from "@/components/trustry/card";
 import { PageHeader } from "@/components/trustry/page-header";
-import { EmptyState, SyncErrorState } from "@/components/trustry/states";
+import { EmptyState } from "@/components/trustry/states";
 import { SETTINGS_TABS, SettingsTabs, type SettingsTab } from "@/components/screens/settings-tabs";
 import { SeedButton } from "@/components/screens/seed-button";
 import { UpcomingScreen } from "@/components/screens/upcoming";
 import { canManageMembers, canUseModule, MODULE_LABEL, ROLE_LABEL } from "@/domain/access";
 import { isDemoMode } from "@/lib/env";
-import { formatNumber, formatRelative } from "@/lib/format";
-import { MARKETPLACES } from "@/domain/marketplaces";
-import { getCurrentUser, getMonthlyPlan, getSyncSummary, getToday, getWorkspace, listConnections, listInvitations, listMembers } from "@/server/data";
+import { formatNumber } from "@/lib/format";
+import { MARKETPLACE_ORDER } from "@/domain/marketplaces";
+import { headers } from "next/headers";
+import { ConnectorsScreen } from "@/components/connectors/connectors-screen";
+import { getConnectorsOverview, getCurrentUser, getMonthlyPlan, getToday, getWorkspace, listInvitations, listMembers } from "@/server/data";
 import type { WorkspaceSummary } from "@/server/types";
 import { InviteForm, MemberRow, type MemberRowData } from "@/components/settings/members";
 import { TargetsForm } from "@/components/settings/targets-form";
 import { monthLabel } from "@/domain/monthly-review";
-import type { ConnectionStatus } from "@/server/types";
+import type { MarketplaceCode } from "@/server/types";
 
 const TAB_COPY: Record<SettingsTab, { title: string; description: string }> = {
   connecteurs: {
@@ -34,15 +36,8 @@ export async function generateMetadata({ params }: PageProps<"/[espace]/parametr
   return { title: TAB_COPY[onglet as SettingsTab]?.title ?? "Paramètres" };
 }
 
-const STATUS: Record<ConnectionStatus, { tone: Tone; label: string }> = {
-  connected: { tone: "bon", label: "Connecté" },
-  syncing: { tone: "info", label: "Synchro en cours" },
-  error: { tone: "critique", label: "En erreur" },
-  not_connected: { tone: "neutre", label: "Non connecté" },
-};
-
-export default async function SettingsPage({ params }: PageProps<"/[espace]/parametres/[onglet]">) {
-  const { espace, onglet } = await params;
+export default async function SettingsPage({ params, searchParams }: PageProps<"/[espace]/parametres/[onglet]">) {
+  const [{ espace, onglet }, query] = await Promise.all([params, searchParams]);
   if (!SETTINGS_TABS.some((t) => t.slug === onglet)) notFound();
   const tab = onglet as SettingsTab;
   const workspace = await getWorkspace(espace);
@@ -53,7 +48,14 @@ export default async function SettingsPage({ params }: PageProps<"/[espace]/para
     <>
       <PageHeader eyebrow={`Paramètres - ${workspace.name}`} title={copy.title} description={copy.description} />
       <SettingsTabs espace={espace} active={tab} />
-      {tab === "connecteurs" ? <ConnectorsTab workspaceId={workspace.id} /> : null}
+      {tab === "connecteurs" ? (
+        <ConnectorsTab
+          workspace={workspace}
+          selected={typeof query.connecter === "string" ? query.connecter : null}
+          filter={typeof query.filtre === "string" ? query.filtre : ""}
+          notice={typeof query.ok === "string" ? query.ok.slice(0, 300) : null}
+        />
+      ) : null}
       {tab === "espace" ? (
         <Card>
           <CardHeader title="Informations" />
@@ -105,100 +107,6 @@ export default async function SettingsPage({ params }: PageProps<"/[espace]/para
       {tab === "facturation" ? (
         <EmptyState icon="lock" title="Bientôt disponible" description="La facturation des espaces clients arrivera après la version 1." />
       ) : null}
-    </>
-  );
-}
-
-async function ConnectorsTab({ workspaceId }: { workspaceId: string }) {
-  const [connections, summary] = await Promise.all([listConnections(workspaceId), getSyncSummary(workspaceId)]);
-  if (connections.length === 0) {
-    return (
-      <EmptyState
-        icon="connecteurs"
-        title="Aucune marketplace connectée"
-        description="Connectez votre première marketplace pour voir remonter commandes, stocks et finances."
-      />
-    );
-  }
-  const cards: { tone: Tone; label: string; value: number; suffix?: string }[] = [
-    { tone: "bon", label: "Connectés", value: summary.upToDate, suffix: `/ ${summary.total}` },
-    { tone: "info", label: "Synchro en cours", value: summary.syncing },
-    { tone: "critique", label: "En erreur", value: summary.errors },
-    { tone: "neutre", label: "Non connecté", value: summary.notConnected },
-  ];
-  const errors = connections.filter((c) => c.status === "error");
-  return (
-    <>
-      <div className="grid grid-cols-2 gap-3.5 xl:grid-cols-4">
-        {cards.map((c) => (
-          <Card key={c.label}>
-            <StatusBadge tone={c.tone}>{c.label}</StatusBadge>
-            <p className="mt-3 text-kpi font-bold tracking-[-0.03em]">
-              {formatNumber(c.value)}
-              {c.suffix ? <span className="ml-1 text-ui font-normal text-muted">{c.suffix}</span> : null}
-            </p>
-          </Card>
-        ))}
-      </div>
-      {errors.map((c) => (
-        <SyncErrorState key={c.id} message={c.lastError ?? "Synchronisation interrompue."} />
-      ))}
-      <Card>
-        <CardHeader title="Mes marketplaces" subtitle={`${connections.length} connecteurs`} />
-        <ul className="flex flex-col sm:hidden">
-          {connections.map((c) => {
-            const mp = MARKETPLACES[c.marketplace];
-            return (
-              <li key={c.id} className="flex items-center justify-between gap-3 border-b border-line py-3 last:border-0">
-                <span className="min-w-0">
-                  <span className="block text-ui font-semibold">{mp.name}</span>
-                  <span className="block text-caption text-muted">
-                    {c.lastSyncAt ? formatRelative(new Date(c.lastSyncAt)) : "Jamais synchronisé"}
-                  </span>
-                </span>
-                <StatusBadge tone={STATUS[c.status].tone}>
-                  {c.status === "syncing" && c.syncProgress != null ? `Synchro ${c.syncProgress} %` : STATUS[c.status].label}
-                </StatusBadge>
-              </li>
-            );
-          })}
-        </ul>
-        <div className="-mx-1 hidden overflow-x-auto sm:block">
-          <table className="w-full min-w-[560px] text-left text-ui">
-            <thead>
-              <tr className="border-b border-line text-caption text-muted">
-                <th className="py-2 pr-2 font-medium">Marketplace</th>
-                <th className="px-2 py-2 font-medium">Méthode</th>
-                <th className="px-2 py-2 font-medium">Statut</th>
-                <th className="py-2 pl-2 text-right font-medium">Dernière synchro</th>
-              </tr>
-            </thead>
-            <tbody>
-              {connections.map((c) => {
-                const mp = MARKETPLACES[c.marketplace];
-                return (
-                  <tr key={c.id} className="border-b border-line last:border-0">
-                    <td className="py-3 pr-2">
-                      <span className="block font-semibold">{mp.name}</span>
-                      <span className="text-caption text-muted">{mp.countries.join(" ")}</span>
-                    </td>
-                    <td className="px-2 py-3 text-ink-2">{mp.api}</td>
-                    <td className="px-2 py-3">
-                      <StatusBadge tone={STATUS[c.status].tone}>
-                        {c.status === "syncing" && c.syncProgress != null ? `Synchro ${c.syncProgress} %` : STATUS[c.status].label}
-                      </StatusBadge>
-                    </td>
-                    <td className="py-3 pl-2 text-right text-meta text-muted">
-                      {c.lastSyncAt ? formatRelative(new Date(c.lastSyncAt)) : "-"}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        <p className="mt-4 text-caption text-muted">Connexion, reconnexion et journal de synchro : Phase 3.</p>
-      </Card>
     </>
   );
 }
@@ -290,5 +198,34 @@ async function TargetsCard({ workspace }: { workspace: WorkspaceSummary }) {
         ]}
       />
     </Card>
+  );
+}
+
+async function ConnectorsTab({
+  workspace,
+  selected,
+  filter,
+  notice,
+}: {
+  workspace: WorkspaceSummary;
+  selected: string | null;
+  filter: string;
+  notice: string | null;
+}) {
+  const [overview, h] = await Promise.all([getConnectorsOverview(workspace.id), headers()]);
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "trustry.vercel.app";
+  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  return (
+    <ConnectorsScreen
+      espace={workspace.slug}
+      workspaceName={workspace.name}
+      overview={overview}
+      canEdit={canManageMembers(workspace.role)}
+      allowTest={isDemoMode() || process.env.TRUSTRY_ALLOW_DEMO_SEED === "1"}
+      mcpUrl={`${proto}://${host}/api/mcp/${workspace.slug}`}
+      selected={MARKETPLACE_ORDER.includes(selected as MarketplaceCode) ? (selected as MarketplaceCode) : null}
+      filter={filter}
+      notice={notice}
+    />
   );
 }

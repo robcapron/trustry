@@ -11,3 +11,10 @@ export function toEurCents(amountCents: number, currency: Currency, eurPerUnit: 
   if (!(eurPerUnit > 0)) throw new Error(`Taux de change invalide pour ${currency}`);
   return Math.round(amountCents * eurPerUnit);
 }
+
+const COUNTRY_CURRENCY: Record<string, Currency> = { PL: "PLN", SE: "SEK", CZ: "CZK", US: "USD", JP: "JPY", AU: "AUD", CH: "CHF", GB: "GBP" };
+
+/** Devise de vente d'une boutique selon son pays (EUR par défaut). */
+export function currencyForCountry(country: string): Currency {
+  return COUNTRY_CURRENCY[country] ?? "EUR";
+}

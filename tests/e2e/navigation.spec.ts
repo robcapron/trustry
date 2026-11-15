@@ -139,3 +139,16 @@ test("forecast : atterrissage fin de mois et objectif modifiable", async ({ page
   await expect(page.getByText(/Objectif\s+500\s000\s€/)).toBeVisible();
   await expect(page.getByText("Sous l'objectif")).toBeVisible();
 });
+
+test("connecteurs : cartes MCP et API, connexion d'une marketplace", async ({ page }, info) => {
+  await page.goto("/sdg-distribution/parametres/connecteurs");
+  await expect(page.getByRole("heading", { name: /Via Claude \(MCP\)/ })).toBeVisible();
+  await expect(page.getByText("/api/mcp/sdg-distribution")).toBeVisible();
+  await expect(page.getByRole("switch", { name: "Actions automatiques" })).toHaveAttribute("aria-checked", "false");
+  await expect(page.getByRole("heading", { name: "Journal de synchro" })).toBeVisible();
+  test.skip(info.project.name !== "desktop", "connexion testée sur desktop");
+  await page.goto("/sdg-distribution/parametres/connecteurs?connecter=tiktok_shop");
+  await expect(page.getByRole("heading", { name: "Connecter TikTok Shop" })).toBeVisible();
+  await page.getByRole("button", { name: "Connecter TikTok Shop" }).click();
+  await expect(page.getByText(/TikTok Shop relié via Claude/)).toBeVisible();
+});
