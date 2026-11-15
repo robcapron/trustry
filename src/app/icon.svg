@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120" role="img" aria-label="Trustry">
+<rect width="120" height="120" rx="28" fill="#111214"/>
+<g transform="translate(11 0) skewX(-10)">
+<path d="M30 30 H90" stroke="#E4FF1A" stroke-width="20" stroke-linecap="round"/>
+<path d="M60 30 V90" stroke="#E4FF1A" stroke-width="20" stroke-linecap="round"/>
+</g>
+</svg>

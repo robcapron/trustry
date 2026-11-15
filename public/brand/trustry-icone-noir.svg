@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120" role="img" aria-label="Trustry">
+<rect width="120" height="120" rx="28" fill="#111214"/>
+<g transform="translate(11 0) skewX(-10)">
+<path d="M34 26 H86" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round"/>
+<path d="M60 26 V70" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round"/>
+</g>
+<path d="M22 84 Q24 90 32 90 H88 Q96 90 98 84" stroke="#FFFFFF" stroke-width="7" stroke-linecap="round" fill="none"/>
+<circle cx="42" cy="100" r="6" fill="#E4FF1A"/>
+<circle cx="78" cy="100" r="6" fill="#E4FF1A"/>
+</svg>

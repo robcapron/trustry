@@ -1,0 +1,124 @@
+@import "tailwindcss";
+
+/*
+ * Design system Trustry - direction "Combo A+B"
+ * Valeurs relevées dans les maquettes /design/mockups. Ne pas inventer de couleurs :
+ * ajouter un token ici si un nouveau besoin apparait.
+ */
+@theme {
+  /* Typographie */
+  --font-sans: "Inter Variable", Inter, -apple-system, system-ui, sans-serif;
+  --font-brand: "Archivo", "Inter Variable", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Palette de marque */
+  --color-carbone: #111214;
+  --color-fluo: #e4ff1a;
+  --color-asphalte: #e9eaec;
+  --color-blanc: #ffffff;
+  --color-surface: #f5f5f7; /* fond des cartes et de la navigation */
+
+  /* Encres (texte) */
+  --color-ink: #111214;
+  --color-ink-2: #45484e; /* liens de navigation */
+  --color-muted: #63666d; /* texte secondaire */
+  --color-subtle: #8d9098; /* placeholder, texte tertiaire */
+  --color-faint: #a3a6ad;
+  --color-on-dark-muted: #b4b7bd; /* texte secondaire sur fond carbone */
+
+  /* Traits */
+  --color-line: #e4e5e8;
+  --color-line-strong: #cdcfd4;
+  --color-grid: #d9dade;
+
+  /* Statuts (toujours avec un libellé, jamais la couleur seule) */
+  --color-critique: #b42318;
+  --color-critique-soft: #fee4e2;
+  --color-important: #b54708;
+  --color-important-soft: #fef0c7;
+  --color-bon: #067647;
+  --color-bon-soft: #dcfae6;
+  --color-info: #175cd3;
+  --color-info-soft: #d1e9ff;
+  --color-attention: #f79009; /* pastille "1 erreur" */
+
+  /* Tailles de texte des maquettes */
+  --text-tiny: 10.5px;
+  --text-2xs: 11px;
+  --text-caption: 11.5px;
+  --text-caption--line-height: 1.35;
+  --text-meta: 12.5px;
+  --text-meta--line-height: 1.4;
+  --text-ui: 13px;
+  --text-ui--line-height: 1.45;
+  --text-nav: 13.5px;
+  --text-nav--line-height: 1.4;
+  --text-title: 17px;
+  --text-title--line-height: 1.3;
+  --text-chart: 26px;
+  --text-kpi: 30px;
+  --text-kpi--line-height: 1;
+  --text-display: 34px;
+  --text-display--line-height: 1.1;
+  --text-hero: 38px;
+  --text-hero--line-height: 1;
+
+  /* Rayons */
+  --radius-card: 20px;
+  --radius-item: 14px;
+  --radius-nav: 12px;
+  --radius-chip: 5px;
+
+  /* Ombres (très légères, style Apple) */
+  --shadow-nav-active: 0 1px 2px rgba(17, 18, 20, 0.06), 0 0 0 1px rgba(17, 18, 20, 0.04);
+  --shadow-segment: 0 1px 2px rgba(17, 18, 20, 0.08);
+  --shadow-toggle: 0 1px 2px rgba(0, 0, 0, 0.2);
+
+  /* Largeurs */
+  --container-main: 1320px;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background: var(--color-blanc);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-feature-settings: "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  ::placeholder {
+    color: var(--color-subtle);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-carbone);
+    outline-offset: 2px;
+  }
+
+  /* Chiffres alignés dans tous les tableaux */
+  table {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@utility safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@utility safe-top {
+  padding-top: env(safe-area-inset-top);
+}
