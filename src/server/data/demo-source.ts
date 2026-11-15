@@ -9,6 +9,7 @@ import { DEFAULT_TARGETS, type MonthlyRow, type PoleTargets } from "@/domain/mon
 import type { DateRange } from "@/domain/period";
 import type { Role } from "@/domain/access";
 import type {
+  ActionRequest,
   ConnectInput,
   Connection,
   ConnectorsOverview,
@@ -284,4 +285,50 @@ export async function connectMarketplace(workspaceId: string, input: ConnectInpu
 export async function disconnectMarketplace(workspaceId: string, connectionId: string) {
   const c = getDemoDataset().connections.find((x) => x.workspaceId === workspaceId && x.id === connectionId);
   if (c) Object.assign(c, { status: "not_connected", syncProgress: null, lastError: null, tokenExpiresAt: null });
+}
+
+// Demandes d'action de Claude (démo) ------------------------------------------------
+
+const demoRequests = new Map<string, ActionRequest[]>();
+
+function demoRequestList(workspaceId: string): ActionRequest[] {
+  if (!demoRequests.has(workspaceId)) {
+    const ds = getDemoDataset();
+    const blocked = ds.alerts.find((a) => a.workspaceId === workspaceId && a.category === "blocked_listing");
+    demoRequests.set(
+      workspaceId,
+      blocked
+        ? [
+            {
+              id: `req-${workspaceId}-1`,
+              tool: "demander_action_marketplace",
+              title: `Débloquer ${blocked.subjects[0] ?? "la référence"} sur Amazon DE`,
+              payload: { type: "debloquer_reference", detail: "Compléter les informations GPSR (fabricant, contact UE) puis relancer la fiche." },
+              status: "pending",
+              createdAt: new Date(Date.now() - 40 * 60_000).toISOString(),
+              via: "oauth",
+            },
+          ]
+        : [],
+    );
+  }
+  return demoRequests.get(workspaceId)!;
+}
+
+export async function listActionRequests(workspaceId: string): Promise<ActionRequest[]> {
+  return demoRequestList(workspaceId).filter((r) => r.status === "pending" || r.status === "approved");
+}
+
+export async function decideActionRequest(workspaceId: string, id: string, decision: "approve" | "reject" | "done"): Promise<ActionRequest> {
+  const r = demoRequestList(workspaceId).find((x) => x.id === id);
+  if (!r) throw new Error("Demande introuvable");
+  if (decision === "reject") r.status = "rejected";
+  else if (decision === "done") r.status = "executed";
+  else {
+    if (r.tool === "changer_statut_alerte") {
+      await setAlertStatus(workspaceId, String(r.payload.alerte_id), r.payload.statut as "todo" | "in_progress" | "resolved");
+      r.status = "executed";
+    } else r.status = "approved";
+  }
+  return r;
 }

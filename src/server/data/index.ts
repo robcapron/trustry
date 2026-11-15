@@ -176,3 +176,8 @@ export const connectors = {
   connect: (ws: string, input: import("../types").ConnectInput) => source().connectMarketplace(ws, input),
   disconnect: (ws: string, connectionId: string) => source().disconnectMarketplace(ws, connectionId),
 };
+
+export const listActionRequests = cache(async (workspaceId: string) => source().listActionRequests(workspaceId));
+export async function decideActionRequest(workspaceId: string, id: string, decision: "approve" | "reject" | "done") {
+  return source().decideActionRequest(workspaceId, id, decision);
+}

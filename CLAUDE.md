@@ -31,6 +31,8 @@ Porteur : Robin Capron (SDG Distribution). Interface 100 % en français.
 - **Import OMS** : outil HTML existant de SDG, intégré **tel quel** (`src/modules/import-oms/`), servi par une route protégée (jamais dans `public/`). Activé uniquement sur l'espace SDG. Ne pas modifier le HTML sans demande explicite.
 - Invitations : lien à usage unique (jeton haché sha256 en base), `accept_invitation` et `invitation_preview` sont security definer volontairement (protégés par le jeton et l'email) : l'avertissement de l'advisor Supabase est attendu.
 - Identifiants marketplaces : `save_connection_credentials` (security definer, owner/admin, écriture seule dans Vault : avertissement advisor attendu) ; lecture déchiffrée `connection_credentials` réservée au rôle service (jobs).
+- Serveur MCP (`/api/mcp/<espace>`, `src/server/mcp/`) : OAuth 2.1 maison (DCR `/api/oauth/register`, consentement `/oauth/autoriser` sur la session Supabase, code + PKCE S256 à usage unique, jetons `mcp_tokens` hachés, rotation au rafraîchissement) ou clé API Trustry (droits admin). Le rôle est relu à chaque appel. `oauth_clients` / `oauth_codes` : RLS sans policy (serveur seul, info advisor attendue). Les outils réutilisent la couche données via un client lié à l'espace autorisé (`runWithMcpContext`).
+- Niveaux MCP (`workspaces.mcp_permission`) : `read` (lecture + imports pour owner/admin/manager), `actions_with_approval` (les actions créent des `mcp_action_requests` validées dans la page Alertes), `actions_auto` (changement de statut d'alerte exécuté directement). Les actions marketplace (débloquer, prix, enchères, réassort) restent des demandes tant qu'il n'y a pas de connecteur natif.
 - Toute nouvelle table métier : ajouter `workspace_id`, l'ajouter à la boucle RLS ou écrire ses policies, et un test dans `tests/db/rls.test.ts`.
 
 ## Stack
@@ -39,7 +41,7 @@ Porteur : Robin Capron (SDG Distribution). Interface 100 % en français.
 - `cacheComponents` désactivé volontairement (pages propres à chaque utilisateur, RLS).
 - Tailwind CSS v4 (tokens dans `src/app/globals.css`), composants maison inspirés de shadcn/ui sur Radix (`radix-ui`), graphiques Recharts.
 - Supabase : Postgres + Auth + RLS + Vault (identifiants marketplaces, jamais en clair). Projet dev : `trustry-dev`.
-- Jobs : Inngest (Phase 3). Serveur MCP : SDK officiel, Streamable HTTP, OAuth 2.1 via Supabase Auth (Phase 4).
+- Jobs : Inngest. Serveur MCP : SDK officiel `@modelcontextprotocol/sdk`, Streamable HTTP sans session, OAuth 2.1 adossé à Supabase Auth.
 - Tests : Vitest (unitaires + RLS sur Postgres local), Playwright (parcours clés, desktop + iPhone).
 - Déploiement : Vercel (équipe Trustry) + Supabase. PWA installable (Chrome et écran d'accueil iPhone).
 
@@ -91,5 +93,5 @@ pnpm typecheck && pnpm lint && pnpm build
 | 1 | Dashboard global + sélecteur d'espace (données mock) | Fait |
 | 2 | P&L détaillé (canal > pays > SKU, filtres, export CSV) + Centre d'alertes + gestion des membres, accès et invitations | Fait |
 | 3 | Revue mensuelle par pôle, prévision d'atterrissage, écran Connecteurs (maquette), interface connecteurs + MockAdapter, calcul du profit réel depuis les données brutes, moteur d'alertes, jobs Inngest, taux BCE, identifiants dans Vault. Reste : connecteurs natifs (Mirakl d'abord), imports Odoo / Drive, notifications push | Fait (socle) |
-| 4 | Serveur MCP (lecture, actions avec validation, 3 niveaux de permission) | A faire |
+| 4 | Serveur MCP : 6 outils de lecture, actions avec validation (3 niveaux), imports pour la synchro via Claude (ventes, fiches et stock, coûts d'achat), OAuth 2.1 + clé API, validation des demandes dans Alertes | Fait |
 | 5 | Les 7 modules piliers | A faire |

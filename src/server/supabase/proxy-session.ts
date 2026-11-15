@@ -29,7 +29,9 @@ export async function updateSession(request: NextRequest) {
   if (!data?.claims && !isPublic) {
     const url = request.nextUrl.clone();
     url.pathname = "/connexion";
-    url.searchParams.set("suite", request.nextUrl.pathname);
+    // On garde la requête complète (ex. paramètres OAuth de /oauth/autoriser) pour y revenir après connexion
+    url.search = "";
+    url.searchParams.set("suite", `${request.nextUrl.pathname}${request.nextUrl.search}`);
     return NextResponse.redirect(url);
   }
   return response;

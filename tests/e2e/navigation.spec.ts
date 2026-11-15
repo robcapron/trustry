@@ -152,3 +152,20 @@ test("connecteurs : cartes MCP et API, connexion d'une marketplace", async ({ pa
   await page.getByRole("button", { name: "Connecter TikTok Shop" }).click();
   await expect(page.getByText(/TikTok Shop relié via Claude/)).toBeVisible();
 });
+
+test("serveur MCP : découverte OAuth publique, demandes de Claude à valider", async ({ page, request }, info) => {
+  const meta = await request.get("/.well-known/oauth-authorization-server");
+  expect(meta.status()).toBe(200);
+  const body = await meta.json();
+  expect(body.code_challenge_methods_supported).toEqual(["S256"]);
+  expect(body.authorization_endpoint).toMatch(/\/oauth\/autoriser$/);
+  const resource = await (await request.get("/.well-known/oauth-protected-resource/api/mcp/sdg-distribution")).json();
+  expect(resource.resource).toMatch(/\/api\/mcp\/sdg-distribution$/);
+  expect((await request.post("/api/mcp/sdg-distribution", { data: {} })).status()).toBe(503);
+
+  test.skip(info.project.name !== "desktop", "validation testée sur desktop");
+  await page.goto("/sdg-distribution/alertes");
+  await expect(page.getByRole("heading", { name: "Demandes de Claude" })).toBeVisible();
+  await page.getByRole("button", { name: "Valider" }).first().click();
+  await expect(page.getByRole("button", { name: "Marquer comme fait" })).toBeVisible();
+});

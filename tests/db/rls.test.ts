@@ -262,6 +262,33 @@ suite("RLS multi-tenant", () => {
     await db.query("rollback");
   });
 
+  it("serveur MCP : jetons visibles par leur titulaire et les admins, clients et codes OAuth invisibles", async () => {
+    await db.query("insert into oauth_clients (client_id, redirect_uris) values ('c1', '{https://claude.ai/cb}')");
+    await db.query(
+      `insert into oauth_codes (code_hash, client_id, user_id, workspace_id, redirect_uri, code_challenge, expires_at)
+       values ('h', 'c1', $1, $2, 'https://claude.ai/cb', 'x', now() + interval '10 minutes')`,
+      [U.lea, WS_SDG],
+    );
+    await db.query(
+      `insert into mcp_tokens (workspace_id, user_id, client_id, token_hash, refresh_hash, expires_at, refresh_expires_at) values
+       ($1, $2, 'c1', 't1', 'r1', now() + interval '1 hour', now() + interval '60 days'),
+       ($1, $3, 'c1', 't2', 'r2', now() + interval '1 hour', now() + interval '60 days')`,
+      [WS_SDG, U.lea, U.camille],
+    );
+    const count = (user: string) => asUser(user, (c) => c.query("select count(*)::int as n from mcp_tokens")).then((r) => r.rows[0].n);
+    expect(await count(U.robin)).toBe(2);
+    expect(await count(U.lea)).toBe(1);
+    expect(await count(U.intrus)).toBe(0);
+    for (const t of ["oauth_clients", "oauth_codes"]) {
+      const r = await asUser(U.robin, (c) => c.query(`select count(*)::int as n from ${t}`));
+      expect(r.rows[0].n).toBe(0);
+    }
+    const revoke = await asUser(U.camille, (c) => c.query("update mcp_tokens set revoked_at = now() where token_hash = 't1'"));
+    expect(revoke.rowCount).toBe(0);
+    const own = await asUser(U.lea, (c) => c.query("update mcp_tokens set revoked_at = now() where token_hash = 't1'"));
+    expect(own.rowCount).toBe(1);
+  });
+
   it("un utilisateur anonyme ne voit rien", async () => {
     await db.query("begin");
     try {

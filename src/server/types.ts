@@ -180,3 +180,13 @@ export type ConnectInput = {
   credentials: Record<string, string> | null;
   scopes: string[];
 };
+
+export type ActionRequest = {
+  id: string;
+  tool: string;
+  title: string;
+  payload: Record<string, unknown>;
+  status: "pending" | "approved" | "rejected" | "executed" | "failed";
+  createdAt: string;
+  via: "oauth" | "api_key";
+};

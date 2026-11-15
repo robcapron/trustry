@@ -15,7 +15,7 @@ const credentials = z.object({
 });
 
 function safeNext(value: string | undefined): string {
-  return value && value.startsWith("/") && !value.startsWith("//") ? value : "/";
+  return value && value.startsWith("/") && !value.startsWith("//") && !value.startsWith("/\\") ? value : "/";
 }
 
 export async function signIn(_prev: AuthState, formData: FormData): Promise<AuthState> {

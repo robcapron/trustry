@@ -10,6 +10,7 @@ import { parisToday } from "@/lib/dates";
 import { createSupabaseServerClient } from "../supabase/server";
 import { MARKETPLACE_ORDER } from "@/domain/marketplaces";
 import type {
+  ActionRequest,
   ConnectInput,
   Connection,
   ConnectionStatus,
@@ -403,7 +404,7 @@ export async function setMonthlyPlan(workspaceId: string, month: string, plan: {
 
 export async function getConnectorsOverview(workspaceId: string): Promise<ConnectorsOverview> {
   const supabase = await createSupabaseServerClient();
-  const [connections, ws, key, runs] = await Promise.all([
+  const [connections, ws, key, runs, tokens] = await Promise.all([
     listConnections(workspaceId),
     supabase.from("workspaces").select("mcp_permission").eq("id", workspaceId).maybeSingle(),
     supabase
@@ -420,6 +421,7 @@ export async function getConnectorsOverview(workspaceId: string): Promise<Connec
       .eq("workspace_id", workspaceId)
       .order("started_at", { ascending: false })
       .limit(30),
+    supabase.from("mcp_tokens").select("user_id").eq("workspace_id", workspaceId).is("revoked_at", null).gt("refresh_expires_at", new Date().toISOString()),
   ]);
   type KeyRow = { prefix: string; created_at: string; created_by: string | null };
   type RunRow = { id: string; job: string; status: SyncRun["status"]; started_at: string; finished_at: string | null; rows_upserted: number; error: string | null; connections: { marketplace_code: string } | null };
@@ -429,7 +431,7 @@ export async function getConnectorsOverview(workspaceId: string): Promise<Connec
     rows: MARKETPLACE_ORDER.map((m) => ({ marketplace: m, connection: connections.find((c) => c.marketplace === m) ?? null })),
     apiKey: k ? { prefix: k.prefix, createdAt: k.created_at, createdBy: (author?.full_name as string | undefined) ?? null } : null,
     mcpPermission: (ws.data?.mcp_permission as McpPermission) ?? "read",
-    mcpUsers: 0,
+    mcpUsers: new Set((tokens.data ?? []).map((t) => t.user_id)).size,
     frequency: connections[0]?.syncFrequencyMinutes ?? 15,
     runs: ((runs.data ?? []) as unknown as RunRow[]).map((r) => ({
       id: r.id,
@@ -505,4 +507,54 @@ export async function disconnectMarketplace(workspaceId: string, connectionId: s
       .select("id"),
     "Déconnexion",
   );
+}
+
+// Demandes d'action de Claude ------------------------------------------------------
+
+export async function listActionRequests(workspaceId: string): Promise<ActionRequest[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data } = await supabase
+    .from("mcp_action_requests")
+    .select("id, tool, title, payload, status, created_at, via")
+    .eq("workspace_id", workspaceId)
+    .in("status", ["pending", "approved"])
+    .order("created_at", { ascending: false })
+    .limit(50);
+  return (data ?? []).map((r) => ({
+    id: r.id,
+    tool: r.tool,
+    title: r.title || r.tool,
+    payload: (r.payload ?? {}) as Record<string, unknown>,
+    status: r.status,
+    createdAt: r.created_at,
+    via: r.via,
+  }));
+}
+
+/**
+ * Validation par l'équipe : un changement de statut d'alerte est exécuté immédiatement ;
+ * une action marketplace passe "validée" (à exécuter par l'équipe) puis "faite".
+ */
+export async function decideActionRequest(workspaceId: string, id: string, decision: "approve" | "reject" | "done"): Promise<ActionRequest> {
+  const supabase = await createSupabaseServerClient();
+  const { data: claims } = await supabase.auth.getClaims();
+  const { data: r } = await supabase.from("mcp_action_requests").select("*").eq("workspace_id", workspaceId).eq("id", id).maybeSingle();
+  if (!r) throw new Error("Demande introuvable");
+  let status: ActionRequest["status"] = decision === "reject" ? "rejected" : decision === "done" ? "executed" : "approved";
+  let result: unknown = null;
+  if (decision === "approve" && r.tool === "changer_statut_alerte") {
+    await setAlertStatus(workspaceId, String(r.payload.alerte_id), r.payload.statut);
+    status = "executed";
+    result = { ok: true };
+  }
+  await mustAffect(
+    supabase
+      .from("mcp_action_requests")
+      .update({ status, decided_by: claims?.claims?.sub ?? null, decided_at: new Date().toISOString(), result })
+      .eq("workspace_id", workspaceId)
+      .eq("id", id)
+      .select("id"),
+    "Validation",
+  );
+  return { id: r.id, tool: r.tool, title: r.title, payload: r.payload, status, createdAt: r.created_at, via: r.via };
 }

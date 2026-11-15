@@ -21,7 +21,8 @@ import {
 import { PILLARS } from "@/domain/pillars";
 import { formatEur, formatRelative } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { getWorkspace, listAlerts } from "@/server/data";
+import { ClaudeRequests } from "@/components/alerts/claude-requests";
+import { getWorkspace, listActionRequests, listAlerts } from "@/server/data";
 
 export const metadata: Metadata = { title: "Alertes" };
 
@@ -49,7 +50,7 @@ export default async function AlertesPage({ params, searchParams }: PageProps<"/
   const [{ espace }, query] = await Promise.all([params, searchParams]);
   const workspace = await getWorkspace(espace);
   if (!workspace) notFound();
-  const all = await listAlerts(workspace.id);
+  const [all, requests] = await Promise.all([listAlerts(workspace.id), listActionRequests(workspace.id)]);
 
   const sev = SEVERITIES.includes(query.niveau as Severity) ? (query.niveau as Severity) : null;
   const statusKey = STATUS_TABS.some((t) => t.key === query.statut) ? (query.statut as (typeof STATUS_TABS)[number]["key"]) : "ouvertes";
@@ -77,6 +78,7 @@ export default async function AlertesPage({ params, searchParams }: PageProps<"/
         title="Alertes"
         description="Priorisées automatiquement : une référence bloquée passe toujours avant un réassort, puis la sévérité et le CA HT à risque."
       />
+      <ClaudeRequests espace={espace} requests={requests} canEdit={!readOnly} />
       <div className="flex flex-wrap items-center gap-2">
         <nav aria-label="Sévérité" className="flex h-10 items-center rounded-full bg-surface p-1">
           <Pill href={href({ niveau: null })} active={!sev}>
